@@ -1,6 +1,6 @@
 # Database migration map
 
-This directory is the future boundary for the provider-independent application database module. It currently contains documentation and the reused schema image only; no schema, migration runner, query, or database client has been moved from [`infrastructure/legacy/`](../infrastructure/legacy/).
+This directory now contains the Phase 1 source-only extraction of the provider-independent application database module: five unchanged model files, 21 unchanged active SQL queries, eight schema/database history files, one seed file, and an independent Go client. The active implementation and every caller remain in [`infrastructure/legacy/`](../infrastructure/legacy/); no migration runner or API cutover is implemented here.
 
 ## Boundary and portability principle
 
@@ -49,14 +49,19 @@ This checklist contains **29 meaningful query groups**:
 
 The current query surface accounts for 16 responsibilities: 14 ✅ groups and 2 🟨 groups. The 21 embedded SQL files form 15 of those groups; the sixteenth is the active event-image read whose required SQL file is absent. The other 13 groups capture historical/stubbed needs, schema gaps, and one unresolved ownership decision.
 
-No query-specific unit or integration tests were found. Migration readiness therefore means “identifiable for porting,” not “runtime behavior has been proven.”
+No query-specific unit or integration tests were found in legacy. Phase 1 adds offline query-loading, transaction, and model-scan unit tests in this module. Migration readiness still means “identifiable for porting,” not “runtime behavior has been proven” against MySQL.
+
+The existing SQL for groups 1–15 is now copied at the proposed paths below, including the known broken event-creation SQL. Inventory statuses and **planned** annotations continue to describe behavior and caller migration, not just file presence. Missing queries, inactive stubs, SQL repairs, and application transaction changes remain deferred.
 
 ## Planned database directory structure
 
-The following tree is **planned documentation only**. No empty implementation directories should be created until their first migrated behavior is ready.
+The following tree remains the target structure. Phase 1 creates only paths containing copied SQL, plus `models/`, `client/`, and the independent `go.mod`/`go.sum`; unimplemented query paths remain planned. No empty implementation directories should be created until their first migrated behavior is ready.
 
 ```text
 database/
+├── go.mod
+├── go.sum
+├── models/
 ├── migrations/
 │   ├── schema/
 │   └── seed/
@@ -149,7 +154,7 @@ The current initializer at [`lambda/internal/database/init/main.go`](../infrastr
 2. applies the November core DDL to both databases; and
 3. applies [`09_14_2025_seed_tables.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/09_14_2025_seed_tables.sql) to `STAGING`.
 
-The runner splits files on semicolons and executes statements without a migration-history table or encompassing transaction. Foreign-key ALTER statements and seed inserts can leave a partially initialized database, and the seed is not safely repeatable. There is no down migration matching the current November DDL. These are migration-runner concerns, not reasons to redesign the schema in this documentation phase.
+The runner splits files on semicolons and executes statements without a migration-history table or encompassing transaction. Foreign-key ALTER statements and seed inserts can leave a partially initialized database, and the seed is not safely repeatable. There is no down migration matching the current November DDL. These are migration-runner concerns, not reasons to redesign the schema in this source-only phase. The copied migration files are history only; none has been executed.
 
 ## Shared application query access
 
@@ -163,7 +168,9 @@ Current access is implemented by [`query_client.go`](../infrastructure/legacy/ut
 - `NewClient` accepts but does not apply `dbName`; active code uses `NewClientFromHost` instead.
 - the unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name; do not port that unvalidated identifier construction.
 
-The future `database/client/` should accept provider-neutral MySQL connection configuration and propagate request contexts. AWS secret retrieval and RDS endpoint resolution should be injected by an adapter outside this core module.
+The new [`database/client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. Callers supply credentials, `Net`/`Addr`, `DBName`, and TLS options using the MySQL driver's configuration defaults. AWS secret retrieval and RDS endpoint resolution remain outside this module; no AWS adapter or legacy caller is changed.
+
+[`queries.Load`](queries/queries.go) embeds only the 21 copied application queries and reads their complete bytes. `ExecMulti` commits a statement batch; `ExecInsertQuery` also prepends the initial insert ID to selected later statements. Both propagate commit/rollback failures and return results only after successful commit. No application workflow is recomposed. Raw-row `Query`/`QueryRow` APIs, the unsafe `ChangeDatabase`/`QueryMulti` helpers, and initialization/migration execution are not ported.
 
 Current SQL intentionally uses MySQL features such as `AUTO_INCREMENT`, `ENUM`, `BOOL`, backticks, `ON DUPLICATE KEY UPDATE`, and MySQL nullable/unique semantics. Preserve those semantics unless a separate database redesign is approved.
 
@@ -209,7 +216,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Portable:** Yes.
 
-**Migration notes:** `students.email` is nullable, but the current Go model uses a non-nullable string. Add a parity test and choose an explicit null representation before moving the model.
+**Migration notes:** `students.email` is nullable, but the current Go model uses a non-nullable string. Phase 1 preserves that model exactly and adds a parity test documenting the existing NULL scan failure. Choose an explicit null representation before API cutover.
 
 ### 3. Current student's clubs and roles
 
@@ -409,7 +416,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Portable:** Partial.
 
-**Migration notes:** `INSERT_event.sql` names 11 columns but supplies 10 values and has no value expression for `rsvp_link` while the handler passes seven arguments. `INSERT_event_description.sql` has a trailing comma in its column list. The initial event insert uses `Exec` before link/description `ExecMulti`, so a later failure can orphan the draft. Repair and test this behavior; do not copy it unchanged.
+**Migration notes:** `INSERT_event.sql` names 11 columns but supplies 10 values and has no value expression for `rsvp_link` while the handler passes seven arguments. `INSERT_event_description.sql` has a trailing comma in its column list. The initial event insert uses `Exec` before link/description `ExecMulti`, so a later failure can orphan the draft. Phase 1 preserves these SQL bytes as source copies only. Repair and test this behavior before API cutover; do not activate the copied behavior unchanged.
 
 ### 13. Club authorization
 
@@ -760,7 +767,7 @@ Seven SQL files under `stub/lambda/` are historical/supporting evidence, not act
 
 ### Schema, seed, and local-stub SQL
 
-Nine migration files remain preserved. Only the database-creation migration, November core DDL, and September seed are selected by the current initializer. These earlier files are historical, not authoritative:
+Nine migration files remain preserved in legacy and are copied byte-for-byte here: eight in [`migrations/schema/`](migrations/schema/) and `09_14_2025_seed_tables.sql` in [`migrations/seed/`](migrations/seed/). Only the database-creation migration, November core DDL, and September seed are selected by the current initializer. These earlier files are historical, not authoritative:
 
 - [`07_11_2025_create_core_tables_up.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_core_tables_up.sql) and its [`down`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_core_tables_down.sql);
 - the July member-form [`up`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_member_form_migration_table_up.sql) and [`down`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_member_form_migration_table_down.sql); and
@@ -783,8 +790,8 @@ The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL 
 ## Recommended migration checklist
 
 1. Establish a versioned MySQL migration baseline from the November DDL without re-running destructive or non-idempotent initialization against existing databases.
-2. Replace AWS-coupled connection creation with injected MySQL configuration; keep AWS Secrets Manager/RDS resolution in an adapter.
-3. Replace the fixed-buffer SQL loader and add context-aware query execution.
+2. Replace AWS-coupled connection creation with injected MySQL configuration; keep AWS Secrets Manager/RDS resolution in an adapter. **Phase 1:** independent client implemented; adapter and caller cutover remain planned.
+3. Replace the fixed-buffer SQL loader and add context-aware query execution. **Phase 1:** implemented only in the new module; legacy is unchanged.
 4. Add query/transaction integration tests against compatible MySQL before moving any handler.
 5. Port groups 1–11 and 13–15 with parity fixtures for null handling, date bounds, pagination, role precedence, and response mapping.
 6. Repair/test groups 12 and 16 before exposing their new API equivalents.
@@ -807,11 +814,18 @@ The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL 
 
 ## Current versus planned state
 
-- `database/README.md`: schema/query migration map only.
+- `database/README.md`: preserved schema/query migration map with Phase 1 status.
 - `database/assets/database-schema.png`: reused current-schema visual.
-- `database/`: no migrated DDL, query, client, or seed implementation yet.
+- `database/go.mod` and `go.sum`: independent module using the existing Go 1.23.0 directive and Go 1.24.3 toolchain; existing modules are unchanged and no workspace is introduced.
+- `database/models/`: all five source models copied exactly, including fields, tags, types, and existing nullable-field limitations.
+- `database/queries/`: all 21 active SQL files copied exactly into the mapped paths; both image inserts are in `events/images/confirm/`. No inactive stub or missing query is added.
+- `database/migrations/`: all nine SQL history/seed files copied exactly, without a runner or execution.
+- `database/client/`: provider-independent pool, context-aware query methods, and transaction helpers; no active callers.
+- Offline tests: all 21 query byte lengths/hashes and absence of null padding, reads beyond 4096 bytes, mock transaction success/failure and insert IDs, and model scan compatibility (including preserved NULL-to-string failures). These do not establish SQL correctness or MySQL integration parity.
 - [`infrastructure/legacy/utils/query_client/`](../infrastructure/legacy/utils/query_client/): current application SQL/client source.
 - [`infrastructure/legacy/lambda/internal/database/init/`](../infrastructure/legacy/lambda/internal/database/init/): current initialization/migration source.
 - [`api/README.md`](../api/README.md): linked endpoint migration map.
 
-This pass changes documentation only. It does not change schema, SQL behavior, credentials, database hosting, or any deployed resource.
+Run the independent module's offline unit tests from `database/` with `go test ./...`. Tests use an in-memory SQL mock and a stub dialer; they do not connect to MySQL or AWS. Migration execution, live integration tests, API cutover, SQL repairs, and the manual-review decisions above remain future work.
+
+This pass copies source and adds an unused module only. It does not change active schema, SQL/API behavior, credentials, database hosting, or any deployed resource.

@@ -15,11 +15,11 @@ The hosting layer provides reusable infrastructure for publishing the project's 
 
 One result of this hosting system is the Girls Who Code Hunter website:
 
+**[www.girlswhocodehunter.org](https://girlswhocodehunter.org)**
+
 ![Girls Who Code Hunter homepage](docs/assets/gwc-homepage.png)
 
 **[View the Hosting & Deployment Architecture →](hosting/README.md)**
-
-**[🌐 Visit the Girls Who Code Hunter Website →](https://girlswhocodehunter.org)**
 
 ## Event Management Backend
 

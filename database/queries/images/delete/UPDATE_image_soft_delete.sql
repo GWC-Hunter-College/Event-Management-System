@@ -1,5 +1,5 @@
 -- UPDATE_image_soft_delete.sql
--- Does: soft-deletes a file after every reference to it is gone. The purge job
+-- Does: soft-deletes a file after every reference to it is gone. POST /admins/purge
 --   removes the row and the S3 object later.
 -- Used by: DELETE /images/{imageId} (takedown), step 4 of its transaction.
 -- Params, in order:

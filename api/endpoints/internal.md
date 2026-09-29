@@ -51,7 +51,7 @@ It never updates the email of an existing row.
 
 `AuthorizeStudentClub(qc, sub, clubId)` returns true if the student is an e-board member **or** owner of the club.
 
-**SQL:** [`authorization/IS_student_authorized_club.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_club.sql) matches `member_is_eboard = 1 OR member_is_owner = 1`.
+**SQL:** [`authorization/IS_student_authorized_club.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_club.sql) matches `member_is_eboard = 1 OR member_is_owner = 1`. The database module's version reads the baseline's single role column: `role IN ('eboard', 'owner')` ([query group 13](../../database/README.md#13-club-authorization)).
 
 **Errors:** `ErrNoSub` for an empty `sub`; `ErrBadClub` when `clubId <= 0`.
 

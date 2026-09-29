@@ -129,9 +129,9 @@ Deletes an event. The PDF says "set status of event to archived"; [decision 2](.
 
 **Path params:** `eventId`.
 
-**Status:** ⬜ Not built. No route or handler. The SQL exists in the database module: the soft delete and the purge job ([query groups 26 and 31](../../database/README.md#26-event-deletion)).
+**Status:** ⬜ Not built. No route or handler. The SQL exists in the database module: the soft delete, the restore, and the admin purge ([query groups 26 and 31](../../database/README.md#26-event-deletion)).
 
-**Proposed contract** (Need: **Later**: the manager bar and Manage tab have no delete button). Deleting is separate from cancelling: a cancelled event stays listed, a deleted one disappears from every read, public and manager ([Event status](events.md#event-status)). An event in any status can be deleted. The delete sets `deleted_at` and doesn't touch `status`; a batch job hard-deletes the event and its unused S3 files once the retention period has passed ([decision 2](../README.md#decisions)).
+**Proposed contract** (Need: **Later**: the manager bar and Manage tab have no delete button). Deleting is separate from cancelling: a cancelled event stays listed, a deleted one disappears from every read, public and manager ([Event status](events.md#event-status)). An event in any status can be deleted. The delete sets `deleted_at` and doesn't touch `status`. For 30 days the event can be [restored](#-post-autheventseventidrestore); after that, an admin's [purge](admins.md#-post-adminspurge) removes it and its unused S3 files for good ([decisions 2, 8 and 9](../README.md#decisions)).
 
 - **Auth:** 🔴 JWT + e-board or owner of any linked club.
 - **Request body:** none.
@@ -139,3 +139,36 @@ Deletes an event. The PDF says "set status of event to archived"; [decision 2](.
 - **Errors:** `401`, `403`, `404` (unknown or already deleted), `500`.
 
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 26](../../database/README.md#26-event-deletion)
+
+## 🔴 POST `/auth/events/{eventId}/restore`
+
+Restores a deleted event. **Proposed**; not in the PDF. It comes from [decision 9](../README.md#decisions): a deleted event can be restored for 30 days.
+
+**Auth:** 🔴 JWT + e-board or owner of the event's **owning** club (`club_is_event_owner`), or an admin. That's narrower than the other `/auth/events` routes, which accept any linked club: an associate club can't bring back an event the owner deleted.
+
+**Path params:** `eventId`.
+
+**Status:** ⬜ Not built. The SQL exists: [`events/restore/`](../../database/queries/events/restore/) and the [owning-club check](../../database/queries/authorization/events/manages_owner_club/IS_student_owner_club_manager.sql) ([query group 26](../../database/README.md#26-event-deletion)).
+
+**Proposed contract** (Need: **Later**: no screen lists deleted events or offers an undo yet).
+
+- **Request body:** none.
+- **Response `200`:** the restored event in the manager read's shape, so the page can show it again:
+
+  ```jsonc
+  { "message": "Successfully restored event 42", "event": { /* proposed event object */ } }
+  ```
+
+  The event comes back with the status it had when it was deleted (`draft`, `posted`, or `cancelled`), its club links, and its images: deleting never touches those, and the purge only removes events deleted more than 30 days ago.
+- **Errors:**
+
+  | Status | When |
+  | --- | --- |
+  | `401` | No token (API Gateway). |
+  | `403` | Not on the owning club's e-board, not an owner, and not an admin. |
+  | `404` | No such event, or it has been purged. |
+  | `409` | The event isn't deleted. |
+  | `410` | The event was deleted 30 or more days ago. It can't be restored, and the next purge removes it. |
+  | `500` | Database failure. |
+
+**Plan:** [decision 9](../README.md#decisions) · [query group 26](../../database/README.md#26-event-deletion)

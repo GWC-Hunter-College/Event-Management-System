@@ -129,7 +129,7 @@ Creates a club and its `club_info` row in one transaction (`ExecInsertQuery`). T
 
   `tags` is optional: at most 3 keys from the [topic list](#proposed-club-object); an unknown key or a fourth tag is `400`. `logo` isn't accepted: the form uploads it after creation through the [logo flow](images.md#how-image-uploads-work).
 - **Response `200`:** unchanged, `{"message": "Successfully inserted club into database", "clubId": 7}`.
-- **Writes:** `clubs`, `club_info`, the tags, and an owner membership for the caller (`member_is_owner = TRUE`), in one transaction.
+- **Writes:** `clubs`, `club_info`, the tags, and an owner membership for the caller (`role = 'owner'`), in one transaction.
 - **Errors:** as today, plus `409` for a duplicate name instead of `500`.
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/post/post.go) · SQL [`clubs/INSERT_club.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club.sql) and [`clubs/INSERT_club_info.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_info.sql) · [query group 7](../../database/README.md#7-club-creation)

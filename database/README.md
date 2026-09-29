@@ -1,6 +1,6 @@
 # Database module
 
-The provider-independent MySQL database module: the baseline schema, development seed data, database-facing models, the application's SQL, and a Go client. It holds one baseline schema (up and down), one seed, 63 SQL query files covering every documented endpoint that's needed Now or Later, and an independent Go client. Nothing calls it yet: every deployed handler still runs from [`infrastructure/legacy/`](../infrastructure/legacy/), and the module has no migration runner.
+The provider-independent MySQL database module: the baseline schema, development seed data, database-facing models, the application's SQL, and a Go client. It holds one baseline schema (up and down), one seed, 67 SQL query files covering every documented endpoint that's needed Now or Later, and an independent Go client. Nothing calls it yet: every deployed handler still runs from [`infrastructure/legacy/`](../infrastructure/legacy/), and the module has no migration runner.
 
 This file is also the map of every query the API needs, as [31 query groups](#query-groups), each linked to its SQL and the endpoints it serves. The [directory layout](#directory-layout) lists every file, and [Transactions](#transactions) gives the order and boundary of every endpoint that runs more than one statement.
 
@@ -49,7 +49,7 @@ There are **31 query groups**:
 
 The 🟨 group is [19](#19-add-a-specified-club-member) (adding a student other than the caller: the insert exists, no endpoint does it). The ⬜ group is [17](#17-my-e-board-clubs) (`GET /me/clubs/eboard`, frontend need "—": the frontend filters `GET /me/clubs`).
 
-Groups 30 (club update) and 31 (purge job) are new in Phase 4. The future features listed as not covered by the API (board, announcements, edit history, import and export) have no queries.
+Groups 30 (club update) and 31 (admin purge) are new in Phase 4. The future features listed as not covered by the API (board, announcements, edit history, import and export) have no queries.
 
 ## Baseline schema
 
@@ -74,12 +74,12 @@ The diagram shows the November schema that legacy deploys. The baseline adds `to
 | `student_info` | Optional username and name | Read by the member and admin lists. Nothing writes it yet. |
 | `clubs` | Club identity, unique name, logo image | Every club read; create, rename, logo confirm, takedown. |
 | `club_info` | Website URL and description | Create; upserted by club update. |
-| `club_members` | Membership, with e-board and owner flags (`NOT NULL`) | Join, leave, owner on create, member list, role update, authorization. |
+| `club_members` | Membership, with one `role`: `member`, `eboard`, or `owner` | Join, leave (never the last owner), owner on create, member list, role update, authorization. |
 | `verified_clubs` | Directory approval | Verified filter; verify and unverify. |
-| `admins` | Global administrators | Admin check and admin CRUD. |
+| `admins` | Global administrators; never empty once the first is created | Admin check and admin CRUD; the last admin can't be removed. |
 | `topics` | The fixed topic list, loaded by the baseline | Referenced by `club_tags`. |
 | `club_tags` | Up to three topics per club, in order | Replaced by create and update; read through `club_details`. |
-| `events` | Event fields; `status` is `draft`, `posted`, or `cancelled`; UTC times; `deleted_at` soft delete | Create, update, status transitions, soft delete, purge; read through `event_details`. |
+| `events` | Event fields; `status` is `draft`, `posted`, or `cancelled`; UTC times; `deleted_at` soft delete | Create, update, status transitions, soft delete, restore (30 days), admin purge; read through `event_details`. |
 | `event_descriptions` | One description per event | Create; upserted by update. |
 | `event_tags` | Free-text event tags | Nothing reads or writes them yet. |
 | `images` | One row per stored file, with owning club, uploader, alt text, and `deleted_at` | Insert on confirm, release, takedown, purge. |
@@ -100,7 +100,7 @@ queries/
 │   └── UPSERT_student_sub_only.sql         legacy   (sub)
 ├── me/
 │   ├── get/SELECT_student_by_sub.sql       legacy   (sub)
-│   ├── clubs/list/SELECT_student_clubs.sql legacy   (sub)
+│   ├── clubs/list/SELECT_student_clubs.sql fixed
 │   └── events/list/SELECT_student_events.sql fixed
 ├── clubs/
 │   ├── list/SELECT_clubs.sql               fixed
@@ -118,8 +118,8 @@ queries/
 │   │   ├── DELETE_club_tags.sql
 │   │   └── INSERT_club_tag.sql
 │   ├── members/
-│   │   ├── create/INSERT_club_member.sql   legacy   (club id, student id)
-│   │   ├── leave/DELETE_club_member.sql    legacy   (student id, club id)
+│   │   ├── create/INSERT_club_member.sql   fixed
+│   │   ├── leave/DELETE_club_member.sql    fixed
 │   │   ├── list/SELECT_club_members.sql
 │   │   └── update_role/
 │   │       ├── SELECT_club_owners_for_update.sql
@@ -150,11 +150,14 @@ queries/
 │   │   ├── UPDATE_event_status_posted.sql
 │   │   └── UPDATE_event_status_cancelled.sql
 │   ├── delete/UPDATE_event_soft_delete.sql
+│   ├── restore/
+│   │   ├── UPDATE_event_restore.sql
+│   │   └── SELECT_event_deletion.sql
 │   ├── thumbnails/confirm/UPDATE_event_thumbnail.sql
 │   ├── images/
 │   │   ├── list/SELECT_event_images.sql
 │   │   └── confirm/INSERT_event_image.sql  legacy   (event id, image id)
-│   └── purge/                              🔵 internal
+│   └── purge/                              POST /admins/purge
 │       ├── UPDATE_images_of_purgeable_events.sql
 │       └── DELETE_purgeable_events.sql
 ├── images/
@@ -166,24 +169,28 @@ queries/
 │   │   ├── UPDATE_events_clear_thumbnail.sql
 │   │   ├── DELETE_event_image_links.sql
 │   │   └── UPDATE_image_soft_delete.sql
-│   └── purge/                              🔵 internal
+│   └── purge/                              POST /admins/purge
 │       ├── SELECT_purgeable_images.sql
 │       └── DELETE_purged_image.sql
 ├── authorization/
 │   ├── clubs/
-│   │   ├── can_manage/IS_student_authorized_club.sql   legacy (student id, club id)
+│   │   ├── can_manage/IS_student_authorized_club.sql   fixed
 │   │   ├── is_member/IS_club_member.sql
 │   │   └── is_owner/IS_club_owner.sql
-│   ├── events/can_manage/IS_student_authorized_event.sql legacy (event id, student id)
+│   ├── events/
+│   │   ├── can_manage/IS_student_authorized_event.sql  fixed
+│   │   └── manages_owner_club/IS_student_owner_club_manager.sql
 │   └── admins/is_admin/IS_admin.sql
 └── admins/
     ├── list/SELECT_admins.sql
     ├── get/SELECT_admin.sql
     ├── create/INSERT_admin.sql
-    └── delete/DELETE_admin.sql
+    └── delete/
+        ├── SELECT_admins_for_update.sql
+        └── DELETE_admin.sql
 ```
 
-Totals: 63 files: 13 legacy, 8 fixed, 42 new. Names follow the existing prefixes: `SELECT_`, `INSERT_`, `UPDATE_`, `DELETE_`, `UPSERT_`, `EXISTS_`, `IS_`. The soft deletes are `UPDATE_…soft_delete` because the statement is an `UPDATE`; only the purge job and link removals use `DELETE_`.
+Totals: 67 files: 8 legacy, 13 fixed, 46 new. Names follow the existing prefixes: `SELECT_`, `INSERT_`, `UPDATE_`, `DELETE_`, `UPSERT_`, `EXISTS_`, `IS_`. The soft deletes and the restore are `UPDATE_…` because the statement is an `UPDATE`; `DELETE_` is for the purge, link removals, leaving a club, and removing an admin.
 
 Note the legacy parameter orders: `IS_student_authorized_event.sql` takes the event id first, while every other authorization query takes the student id first, and `INSERT_club_member.sql` takes the club id first.
 
@@ -192,9 +199,10 @@ Note the legacy parameter orders: `IS_student_authorized_event.sql` takes the ev
 | Check | Query | Rule |
 | --- | --- | --- |
 | Is member | `authorization/clubs/is_member/IS_club_member.sql` | Any membership row. |
-| Can manage club | `authorization/clubs/can_manage/IS_student_authorized_club.sql` | E-board or owner of the club. |
+| Can manage club | `authorization/clubs/can_manage/IS_student_authorized_club.sql` | `role IN ('eboard', 'owner')` in the club. |
 | Can manage event | `authorization/events/can_manage/IS_student_authorized_event.sql` | E-board or owner of **any** club linked to the event. |
-| Is owner | `authorization/clubs/is_owner/IS_club_owner.sql` | Owner of the club. |
+| Manages the event's owning club | `authorization/events/manages_owner_club/IS_student_owner_club_manager.sql` | E-board or owner of the event's owning club only. Used by restore, together with the admin check. |
+| Is owner | `authorization/clubs/is_owner/IS_club_owner.sql` | `role = 'owner'` in the club. |
 | Is admin | `authorization/admins/is_admin/IS_admin.sql` | Has an `admins` row. |
 
 ### Fixed defects
@@ -209,8 +217,10 @@ Each fix is in the module's copy only; `infrastructure/legacy` is unchanged.
 | `events/read/SELECT_events.sql`, `clubs/events/list/SELECT_club_events.sql`, `me/events/list/SELECT_student_events.sql` | Paged event-to-club rows, not events; matched ids and status with `LIKE`; strict date bounds; posted only; `/me/events` and club lists dropped other linked clubs | Select from `event_details`, one row per event, so `LIMIT` counts events; `=` and `IN` instead of `LIKE`; `posted` and `cancelled`; every linked club; the proposed list parameters. |
 | `clubs/list/SELECT_clubs.sql`, `clubs/get/SELECT_club.sql` | No description (list), tags, member count, or verified flag | Select from `club_details`. |
 | `images/create/INSERT_image.sql` | No owning club, uploader, or alt text; `NOW()` for `created_at` | Added the three columns; `created_at` takes its default. Moved to `images/create/`, because every confirm shares it. |
+| `authorization/clubs/can_manage/IS_student_authorized_club.sql`, `authorization/events/can_manage/IS_student_authorized_event.sql`, `clubs/members/create/INSERT_club_member.sql`, `me/clubs/list/SELECT_student_clubs.sql` | Read or wrote the two role flags, which the baseline replaces with one `role` column ([decision 11](../api/README.md#decisions)) | Read and write `role`. `SELECT_student_clubs.sql` also orders by club name. Parameter orders are unchanged. |
+| `clubs/members/leave/DELETE_club_member.sql` | Refused every owner, and `member_is_owner = FALSE` didn't match `NULL` | Refuses only the club's last owner, counted in the same statement. |
 
-**List parameters** ([proposed](../api/endpoints/events.md#proposed-list-parameters)), shared by the three public lists: `when` is `upcoming` (not ended yet, `end_date > UTC_TIMESTAMP()`, start ascending), `past` (ended, start descending), or `NULL` (start ascending). `startDate` and `endDate` are optional UTC bounds, inclusive: `start_date >= startDate` and `end_date <= endDate`. `limit` (default 50, maximum 100) and `page` are validated by the API and passed as `LIMIT` and `OFFSET`. The drafts list takes only `limit` and `page` and orders by `updated_at` descending.
+**List parameters** ([proposed](../api/endpoints/events.md#proposed-list-parameters)), shared by the three public lists: `when` is `upcoming` (not ended yet, `end_date > UTC_TIMESTAMP()`, start ascending), `past` (ended, start descending), or `NULL` (start ascending). `startDate` and `endDate` become a half-open UTC range `[start, end)`, and an event matches when it overlaps it: `start_date < end AND (end_date > start OR start_date >= start)`, so a multi-day event that started earlier still shows up. The API converts a date to 00:00 that day in `America/New_York` (for `endDate`, 00:00 the next day, so the whole day is included) and a timestamp with an offset as given, both to UTC ([decision 10](../api/README.md#decisions)). The last clause keeps a zero-length event that starts exactly at the range start. `limit` (default 50, maximum 100) and `page` are validated by the API and passed as `LIMIT` and `OFFSET`. The drafts list takes only `limit` and `page` and orders by `updated_at` descending.
 
 ## Transactions
 
@@ -223,15 +233,17 @@ Endpoints that run more than one statement. Each "in one transaction" workflow u
 | `POST /clubs/{clubId}/events` | `INSERT_event` (last insert id is the event id) → `INSERT_event_description` if there's a description → `INSERT_event_club_link` (owner, `TRUE`) → `INSERT_event_club_link` (`FALSE`) per associate, deduplicated | One transaction, after `EXISTS_club` (`404`) and the can-manage-club check (`403`). A bad associate id fails its foreign key and rolls back. |
 | `PATCH /auth/events/{eventId}` | `SELECT_event_for_update` (locks the row; no row is `404`) → merge → `UPDATE_event` → `UPSERT_event_description` if sent → if `associates` sent: `DELETE_event_associates` → `INSERT_event_club_link` × n → if `status` sent and differs from the current one: `UPDATE_event_status_posted` or `UPDATE_event_status_cancelled` (0 rows is `400`) → commit → `SELECT_event` (`public_only` `FALSE`) and `SELECT_event_images` for the response | One transaction, after the can-manage-event check (`403`). A `status` equal to the current one skips the status update. |
 | `DELETE /auth/events/{eventId}` | `UPDATE_event_soft_delete` | One statement. 0 rows is `404`. |
+| `POST /auth/events/{eventId}/restore` | `IS_student_owner_club_manager` or `IS_admin` (`403`) → `UPDATE_event_restore`. On 0 rows, `SELECT_event_deletion`: no row is `404`, not deleted is `409`, deleted 30 or more days ago is `410`. Then `SELECT_event` (`public_only` `FALSE`) and `SELECT_event_images` for the response | One statement does the restore; the window check is in its `WHERE` clause. |
 | `POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm` | `SELECT_event_for_update` (no row is `404`) → `INSERT_image` (`event-thumbnail`, owner club, caller, alt text) → `UPDATE_event_thumbnail` → `UPDATE_image_soft_delete_if_unused` for the old flyer, if there was one | One transaction, after the can-manage-event check and the S3 existence check. |
 | `POST /clubs/{clubId}/thumbnails/confirm` | `SELECT_club_logo_for_update` (no row is `404`) → `INSERT_image` (`club-thumbnail`) → `UPDATE_club_logo` → `UPDATE_image_soft_delete_if_unused` for the old logo, if any | One transaction, after the can-manage-club check and the S3 existence check. |
 | `POST /clubs/{clubId}/events/{eventId}/images/confirm` | `SELECT_event_for_update` (for `owner_club_id`; no row is `404`) → `INSERT_image` (`event-image`) → `INSERT_event_image` | One transaction. Replaces the legacy handler's two separate commits. |
-| `DELETE /images/{imageId}` (takedown) | `SELECT_image` (no row is `404`; `fk_club_id` for the check) → `UPDATE_clubs_clear_logo` → `UPDATE_events_clear_thumbnail` → `DELETE_event_image_links` → `UPDATE_image_soft_delete` | One transaction, after the can-manage-club check on the owning club, or `IS_admin`. The purge job deletes the S3 object later. |
+| `DELETE /images/{imageId}` (takedown) | `SELECT_image` (no row is `404`; `fk_club_id` for the check) → `UPDATE_clubs_clear_logo` → `UPDATE_events_clear_thumbnail` → `DELETE_event_image_links` → `UPDATE_image_soft_delete` | One transaction, after the can-manage-club check on the owning club, or `IS_admin`. An admin's purge deletes the S3 object once the file has been deleted for more than 30 days. |
 | `PUT /clubs/{clubId}/members/roles` | `SELECT_club_owners_for_update` → `UPDATE_club_member_role`. On 0 rows: `IS_club_member` (0 is `404`); otherwise, if the member already has that role, `200`; else `409` (last owner) | One transaction, after `EXISTS_club` and `IS_club_owner` for the caller (`403`). Locking the owner rows stops two owners demoting each other at once. |
 | `POST /clubs/{clubId}/members/me` | `EXISTS_club` (`404`) → `INSERT_club_member` (0 rows is `409`) | Two statements, no transaction needed: the insert is guarded on its own. |
-| `DELETE /clubs/{clubId}/members/me` | `DELETE_club_member`; on 0 rows `IS_club_member` (0 is `404`, 1 is `403`: the caller is the owner) | No transaction needed. |
+| `DELETE /clubs/{clubId}/members/me` | `SELECT_club_owners_for_update` → `DELETE_club_member`; on 0 rows `IS_club_member` (0 is `404`, 1 is `403`: the caller is the last owner) | One transaction. Locking the owner rows stops the last two owners leaving at once. |
 | `POST /admins`, `POST /clubs/{clubId}/verification` | `INSERT_admin` or `INSERT_verified_club`; on 0 rows, `SELECT_student_by_sub` or `EXISTS_club` tells missing (`404`) from already done | No transaction needed. |
-| Purge job (🔵) | **Transaction 1:** `UPDATE_images_of_purgeable_events` → `DELETE_purgeable_events`, both with the same retention period. **Then, per batch:** `SELECT_purgeable_images` → for each row: `DELETE_purged_image` (commit) → delete the S3 object | Transaction 1 is atomic. Each image is its own step, and its row goes before its object, so a failed S3 delete leaves only a harmless orphan object. |
+| `DELETE /admins/{studentId}` | `SELECT_admins_for_update` → `DELETE_admin`; on 0 rows `IS_admin` (0 is `404`, 1 is `409`: the last admin) | One transaction, after the caller's admin check. Locking every admin row stops two admins removing each other at once. |
+| `POST /admins/purge` | `IS_admin` (`403`). **Transaction 1:** `UPDATE_images_of_purgeable_events` → `DELETE_purgeable_events`. **Then, in batches until one comes back empty:** `SELECT_purgeable_images` → for each row: `DELETE_purged_image` (commit) → delete the S3 object | Transaction 1 is atomic. Each image is its own step, and its row goes before its object, so a failed S3 delete leaves only a harmless orphan object. Every purge query hard-codes the 30 days that `UPDATE_event_restore` uses. |
 
 Reads with a follow-up check, not a transaction: `GET /events/{eventId}` is `SELECT_event` (`public_only` `TRUE`, no row is `404`) then `SELECT_event_images`. `GET /auth/events/{eventId}` is the can-manage-event check, then the same two with `public_only` `FALSE`. The gallery routes run `SELECT_event_status` first (public routes need `posted` or `cancelled`).
 
@@ -240,17 +252,37 @@ Reads with a follow-up check, not a transaction: `GET /events/{eventId}` is `SEL
 On a local machine, in a throwaway MySQL 8.0.46 Docker container (RDS runs 8.0.37) with the default strict `sql_mode` and the server time zone at `+00:00`. Only files under `database/` were mounted, read-only. Nothing from `infrastructure/legacy` was run, built, or imported, and no AWS credentials, `.env` files, or remote databases were used. The container was removed afterwards.
 
 1. Applied the baseline, then the seed.
-2. Ran every one of the 63 query files with bound parameters: each file's text was sent to `PREPARE … FROM` unchanged, with `EXECUTE … USING` for the parameters, the same binding the Go driver uses. The results were checked against the seed. Among them:
+2. Ran every one of the 67 query files with bound parameters: each file's text was sent to `PREPARE … FROM` unchanged, with `EXECUTE … USING` for the parameters, the same binding the Go driver uses. The results were checked against the seed. Among them:
    - Paging with `limit` 2 returned four pages of distinct events. The three-club hackathon counted once.
    - `when=upcoming` included the ongoing event and ordered by start ascending. `when=past` ordered descending. Cancelled events appeared; drafts and soft-deleted events didn't.
    - Every illegal status change affected 0 rows: `draft → cancelled`, `posted → posted`, `cancelled → cancelled`, posting a draft with no location, and changing a soft-deleted event. The allowed `draft → posted → cancelled → posted` chain affected 1 row each.
-   - The role update refused to demote a club's last owner, and allowed demoting one of two.
+   - The role update refused to demote a club's last owner, and allowed demoting one of two. An owner could leave while a second owner remained; the last owner couldn't. The e-board filter returned e-board members and owners.
+   - Date ranges matched by overlap: a range starting the day after the hackathon began still returned it, and an event starting exactly at the (exclusive) range end was left out.
+   - Restore brought back an event deleted 3 days ago, and one deleted 29 days 23 hours 59 minutes ago. It refused one deleted 45 days ago, an event that wasn't deleted, and an unknown id, and `SELECT_event_deletion` told those apart.
+   - The last admin couldn't be removed, even by themselves, and removing one of two admins worked.
    - A flyer that's also in its gallery was excluded from `image_count` and the gallery. The release query kept a photo that was still in two galleries; the takedown removed both links, then soft-deleted it.
-   - The purge job removed the event soft-deleted 45 days ago, kept the one deleted 3 days ago, and cascaded its links. It then soft-deleted and purged that event's unshared flyer and photo. Deleting a still-referenced image was refused.
-   - Constraint errors: a fourth topic, wrong-case and unknown topics, a duplicate topic, a duplicate club name in different case, end before start, status `'archived'`, and a duplicate `object_key`.
+   - The purge removed the event soft-deleted 45 days ago, kept the one deleted 29 days 23 hours ago, and cascaded its links. It then soft-deleted and purged that event's unshared flyer and photo. Deleting a still-referenced image was refused.
+   - Constraint errors: a fourth topic, wrong-case and unknown topics, a duplicate topic, a duplicate club name in different case, end before start, statuses `'archived'` and `'drafted'`, and a duplicate `object_key`.
 3. Ran the down file on the changed database, which left it empty. Then ran the baseline and seed again, and the schema dump matched the first one exactly.
 
-`go test ./...` in `database/` checks the pins for the 21 copied files, the header of every new or fixed file, the naming prefixes, complete loading of each file, the client's transactions, and model scans. It doesn't connect to MySQL; the container run above is the only execution against a database, and it isn't automated yet.
+`go test ./...` in `database/` checks the pins for the 21 copied files, the header of every new or fixed file, the naming prefixes, that every `.sql` file on disk is in the `go:embed` list, complete loading of each file, the client's transactions, and model scans. It doesn't connect to MySQL; the container run above is the only execution against a database, and it isn't automated yet.
+
+## The first admin
+
+There's no endpoint for creating the first admin: `POST /admins` needs an admin to call it ([decision 12](../api/README.md#decisions)). A developer creates the first one by hand, once per database:
+
+1. The person signs in to the site once, so the Cognito trigger (or `RequireStudent`) creates their `students` row. Their `sub` is the user's `sub` attribute in the Cognito user pool console; `GET /me` also returns it as `student.id`.
+2. Connect to the database with an account that can write to it, and run:
+
+   ```sql
+   INSERT INTO admins (fk_student_id)
+   SELECT id FROM students WHERE id = '<their sub>';
+   ```
+
+   It inserts one row. 0 rows means the `sub` has no `students` row yet: they haven't signed in, or the `sub` is wrong.
+3. Check it: `SELECT fk_student_id FROM admins;`
+
+From then on, admins add and remove each other through `POST /admins` and `DELETE /admins/{studentId}`, and [`DELETE_admin.sql`](queries/admins/delete/DELETE_admin.sql) never removes the last one.
 
 ## Shared application query access
 
@@ -267,7 +299,7 @@ The module's [`client/`](client/) accepts caller-supplied `mysql.Config` and pro
 
 Client configuration the baseline needs ([T1](docs/schema-review.md#t1-store-start-and-end-in-utc)): `ParseTime = true`, `Loc = UTC`, and `Params["time_zone"] = "'+00:00'"`. The go-sql-driver default `clientFoundRows = false` is assumed: affected-row counts are *changed* rows, which the 0-row checks above rely on.
 
-The Go models in [`models/`](models/) are still the legacy copies and don't match the baseline yet: `Student.Email`, `Event.Location`, and `Event.AuthorID` need to be pointers, `Event.Status` values change, and `Image` needs `ClubID`, `UploadedBy`, `AltText`, and `DeletedAt`. The view columns (`image_count`, `owner_*`, the JSON `associates` and `tags`) need model structs too. That's API cutover work; this phase changed docs and SQL only.
+The Go models in [`models/`](models/) are still the legacy copies and don't match the baseline yet: `Student.Email`, `Event.Location`, and `Event.AuthorID` need to be pointers, `ClubWithRole` reads `role` from the column now, `Event.Status` values change, and `Image` needs `ClubID`, `UploadedBy`, `AltText`, and `DeletedAt`. The view columns (`image_count`, `owner_*`, the JSON `associates` and `tags`) need model structs too. That's API cutover work; this phase changed docs and SQL only.
 
 ## Query groups
 
@@ -288,7 +320,7 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 ### 3. Current student's clubs and roles
 
 **Status:** ✅ · **Endpoints:** 🔴 [`GET /me/clubs`](../api/endpoints/me.md#-get-meclubs).
-**Files:** `me/clubs/list/SELECT_student_clubs.sql` (legacy, unchanged). `thumbnail_url` is the logo's object key; the API signs it.
+**Files:** `me/clubs/list/SELECT_student_clubs.sql` (fixed: reads `club_members.role`). `thumbnail_url` is the logo's object key; the API signs it.
 
 ### 4. Current student's events
 
@@ -319,8 +351,8 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 ### 9. Leave caller's club
 
 **Status:** ✅ · **Endpoints:** 🟨 [`DELETE /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-delete-clubsclubidmembersme) (the route still needs its authorizer).
-**Files:** `clubs/members/leave/DELETE_club_member.sql` (legacy), `authorization/clubs/is_member/IS_club_member.sql`.
-**Notes:** The flags are `NOT NULL` in the baseline, so the legacy guard `member_is_owner = FALSE` now matches every non-owner.
+**Files:** `clubs/members/update_role/SELECT_club_owners_for_update.sql`, `clubs/members/leave/DELETE_club_member.sql` (fixed), `authorization/clubs/is_member/IS_club_member.sql`.
+**Notes:** Only a club's last owner can't leave ([decision 11](../api/README.md#decisions)); the deployed SQL refuses every owner.
 
 ### 10. Club event list
 
@@ -378,6 +410,7 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 
 **Status:** ✅ · **Endpoints:** ⬜ [`PUT /clubs/{clubId}/members/roles`](../api/endpoints/memberships.md#-put-clubsclubidmembersroles).
 **Files:** `clubs/members/update_role/SELECT_club_owners_for_update.sql`, `UPDATE_club_member_role.sql`, `authorization/clubs/is_owner/IS_club_owner.sql`.
+**Notes:** Sets the one `role` column. A club's last owner can't be demoted.
 
 ### 21. Club draft events
 
@@ -387,8 +420,8 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 ### 22. Admin CRUD
 
 **Status:** ✅ · **Endpoints:** ⬜ [every `/admins` route](../api/endpoints/admins.md), 🔵 admin check.
-**Files:** `admins/list/SELECT_admins.sql`, `get/SELECT_admin.sql`, `create/INSERT_admin.sql`, `delete/DELETE_admin.sql`, `authorization/admins/is_admin/IS_admin.sql`.
-**Notes:** The admin responses aren't defined; the queries return student id, email, and name. What "their clubs" means, the first admin, and last-admin protection are [open](#open-questions); `DELETE_admin.sql` doesn't protect the last admin.
+**Files:** `admins/list/SELECT_admins.sql`, `get/SELECT_admin.sql`, `create/INSERT_admin.sql`, `delete/SELECT_admins_for_update.sql`, `delete/DELETE_admin.sql`, `authorization/admins/is_admin/IS_admin.sql`.
+**Notes:** The admin responses aren't defined; the queries return student id, email, and name. `DELETE_admin.sql` never removes the last admin, including when an admin removes themselves ([decision 12](../api/README.md#decisions)). The first admin is created by hand: see [The first admin](#the-first-admin). What "their clubs" means is [open](#open-questions).
 
 ### 23. Club verification writes
 
@@ -407,8 +440,9 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 
 ### 26. Event deletion
 
-**Status:** ✅ · **Endpoints:** ⬜ [`DELETE /auth/events/{eventId}`](../api/endpoints/event-management.md#-delete-autheventseventid).
-**Files:** `events/delete/UPDATE_event_soft_delete.sql`. A soft delete ([decision 4](docs/schema-review.md#decisions)); group 31 hard-deletes later.
+**Status:** ✅ · **Endpoints:** ⬜ [`DELETE /auth/events/{eventId}`](../api/endpoints/event-management.md#-delete-autheventseventid), ⬜ [`POST /auth/events/{eventId}/restore`](../api/endpoints/event-management.md#-post-autheventseventidrestore).
+**Files:** `events/delete/UPDATE_event_soft_delete.sql`; `events/restore/UPDATE_event_restore.sql`, `SELECT_event_deletion.sql`, and `authorization/events/manages_owner_club/IS_student_owner_club_manager.sql`.
+**Notes:** A soft delete ([decision 4](docs/schema-review.md#decisions)). Restore works for 30 days ([decision 9](../api/README.md#decisions)); group 31 removes the event after that, with the same 30 days hard-coded.
 
 ### 27. Club and event thumbnail metadata assignment
 
@@ -433,13 +467,13 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 
 ### 31. Purge job
 
-**Status:** ✅ · **Endpoints:** 🔵 internal batch job (decision 4). Not exposed through API Gateway.
-**Files:** `events/purge/UPDATE_images_of_purgeable_events.sql`, `DELETE_purgeable_events.sql`, `images/purge/SELECT_purgeable_images.sql`, `DELETE_purged_image.sql`.
-**Notes:** Takes the retention period in days, which isn't decided yet. The job's S3 client and schedule live outside this module.
+**Status:** ✅ · **Endpoints:** ⬜ 🔴 [`POST /admins/purge`](../api/endpoints/admins.md#-post-adminspurge), run by an admin on demand. There's no scheduled job ([decision 8](../api/README.md#decisions)).
+**Files:** `events/purge/UPDATE_images_of_purgeable_events.sql`, `DELETE_purgeable_events.sql`, `images/purge/SELECT_purgeable_images.sql`, `DELETE_purged_image.sql`, and the admin check.
+**Notes:** Removes only what was deleted more than 30 days ago. The 30 days are written into each query, the same as in the restore, so nothing restorable is purged. The S3 deletes go through the API's storage adapter.
 
 ## SQL source accounting
 
-- **Embedded legacy SQL:** all 21 files under `utils/query_client/queries/` are in the module: 13 unchanged, 8 fixed (one of them moved). `infrastructure/legacy` itself is unchanged.
+- **Embedded legacy SQL:** all 21 files under `utils/query_client/queries/` are in the module: 8 unchanged, 13 fixed (one of them moved). `infrastructure/legacy` itself is unchanged.
 - **Inactive endpoint-stub SQL:** seven files under `stub/lambda/` are design notes only and aren't in the module. `GET_me_clubs_events.sql` is superseded by group 4, `eboard.sql` by group 17, `GET_events.sql`, `eventsId.sql`, and `description.sql` by group 11, and the two `admins/studentId` files by group 22.
 - **Schema and seed history:** the nine older files are in [`migrations/history/`](migrations/history/), unchanged. The three `stub/environment/` SQL files are local experiments and aren't used.
 
@@ -453,19 +487,16 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 | 4 | Automated query tests against MySQL | ⬜ | The container run was manual. A test that starts MySQL and runs the same checks would keep them from regressing. |
 | 5 | Go models matching the baseline | ⬜ | See [Shared application query access](#shared-application-query-access). |
 | 6 | A migration runner | ⬜ | [Future work](docs/schema-review.md#future-work-a-migration-runner), for when a live database exists. |
-| 7 | The purge job itself (schedule, S3 deletes, retention setting) | ⬜ | Only its SQL exists. |
+| 7 | The purge and restore endpoints | ⬜ | Only their SQL exists; the purge's S3 deletes need the storage adapter. |
 | 8 | API callers cut over | ⬜ | [`infrastructure/legacy/`](../infrastructure/legacy/) stays the working reference until parity and rollback plans are reviewed. |
 
 ## Open questions
 
 Product and data decisions the code doesn't settle:
 
-- The purge job's retention period (the tests assume 30 days), and whether a soft-deleted event can be restored within it.
-- Date-only list bounds: midnight in `America/New_York`, or full timestamps with an offset only. The queries take UTC `DATETIME` bounds either way.
 - Whether request-time student sync updates a changed email on an existing row.
-- Whether an event's author or an admin gets management rights beyond the linked clubs' e-board and owners.
-- Admins: bootstrap, last-admin protection, and what "their clubs" means in `GET /admins`.
-- Whether `role=eboard` on the member list should include owners (the queries follow memberships.md, which says it does).
+- Whether an event's author or an admin gets management rights beyond the linked clubs' e-board and owners. (An admin can already restore an event and take down an image.)
+- What "their clubs" means in `GET /admins`.
 - Whether unused `student_info` and `event_tags` are requirements or unserved schema. Nothing proposes deleting them.
 
 ## Files
@@ -478,7 +509,7 @@ Product and data decisions the code doesn't settle:
 - `database/migrations/seed/`: the development seed.
 - `database/migrations/history/`: the older schema and seed files, never applied.
 - `database/models/`: the five legacy model files, unchanged.
-- `database/queries/`: the 63 query files, `queries.go` (the embed list and `Load`), and the tests.
+- `database/queries/`: the 67 query files, `queries.go` (the embed list and `Load`), and the tests.
 - `database/client/`: provider-independent pool, context-aware query methods, and transaction helpers; no callers yet.
 
 Run the module's unit tests from `database/` with `go test ./...`. They don't connect to MySQL or AWS.

@@ -111,7 +111,7 @@ Lists carry the flyer (`thumbnailUrl`) and `imageCount`, not the gallery ([decis
 | Query param | Default | Rule |
 | --- | --- | --- |
 | `when` | none | New. `upcoming`: events that haven't ended, ordered by start time ascending. `past`: events that have ended, ordered by start time descending. Anything else is `400`. |
-| `startDate`, `endDate` | none | Optional date bounds, as today but ISO 8601. Without `when`, results are ordered by start time ascending. |
+| `startDate`, `endDate` | none | Optional. A date (`YYYY-MM-DD`) covers the whole day in `America/New_York`: `startDate=2026-10-01` starts at 00:00 on October 1, and `endDate=2026-10-31` ends just before 00:00 on November 1. A full ISO 8601 timestamp with an offset is taken as given; `endDate` is always exclusive. An event matches when it overlaps the range, so a multi-day event that started before `startDate` is included ([decision 10](../README.md#decisions)). Without `when`, results are ordered by start time ascending. Anything else is `400`. |
 | `limit` | `50` | Counts events, not joined rows. `1`–`100`; anything else is `400` `Invalid limit. Must be between 1 and 100.` |
 | `page` | `0` | As today, counted in events. |
 
@@ -127,7 +127,7 @@ The deployed (legacy) database stores `events.status` as `drafted`, `posted`, or
 | `posted` | `posted` | Everyone. | Published. |
 | `cancelled` | `cancelled` | Everyone. Stays in public lists with its details, so people who planned to go find out. | Called off. Set with [`PATCH`](event-management.md#-patch-autheventseventid). |
 
-There's no `archived` status ([decision 2](../README.md#decisions)). Deleting an event with [`DELETE`](event-management.md#-delete-autheventseventid) is a soft delete: it sets `deleted_at`, and from then on **every** read, public or manager, treats the event as not found. A batch job hard-deletes events that have been deleted for longer than the retention period.
+There's no `archived` status ([decision 2](../README.md#decisions)). Deleting an event with [`DELETE`](event-management.md#-delete-autheventseventid) is a soft delete: it sets `deleted_at`, and from then on **every** read, public or manager, treats the event as not found. For 30 days a deleted event can be [restored](event-management.md#-post-autheventseventidrestore); after that, an admin's [purge](admins.md#-post-adminspurge) removes it for good ([decisions 8 and 9](../README.md#decisions)).
 
 Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/events`, `GET /me/events`) return `posted` and `cancelled`, and never deleted events.
 

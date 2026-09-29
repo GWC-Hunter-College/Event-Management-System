@@ -46,7 +46,9 @@ Promotes a student to admin by inserting their ID into `admins`.
 
 **Status:** ⬜ Not built. No route, handler, insert query, or admin check.
 
-**Open:** how the first admin gets created, and how to make sure the last admin can't be removed.
+**Rules** ([decision 12](../README.md#decisions)): any admin may add another admin. The first admin is created by a developer with a one-off SQL insert, not through this route ([how](../../database/README.md#the-first-admin)).
+
+**Proposed** (Need: **Later**): body `{ "studentId": "<sub>" }`. `404` when there's no such student, `409` when they're already an admin. The response isn't defined yet.
 
 **Plan:** PDF "Endpoints Revamp", p. 19 · [query group 22](../../database/README.md#22-admin-crud)
 
@@ -62,6 +64,38 @@ Demotes an admin by deleting their `admins` row.
 
 **Status:** ⬜ Not built. There's only an unwired SQL stub, [`DELETE_admins_studentId.sql`](../../infrastructure/legacy/stub/lambda/admins/studentId/DELETE_admins_studentId.sql), with the same hard-coded ID `2`.
 
-**Open:** whether admins may demote themselves, and what protects the last admin.
+**Rules** ([decision 12](../README.md#decisions)): any admin may remove another admin, or themselves, except the last admin. Removing the last admin affects no rows.
+
+**Proposed** (Need: **Later**): `404` when the student isn't an admin, `409` when they're the last admin. The response isn't defined yet.
 
 **Plan:** PDF "Endpoints Revamp", p. 19 · [query group 22](../../database/README.md#22-admin-crud)
+
+## 🔴 POST `/admins/purge`
+
+Permanently removes what was deleted more than 30 days ago. **Proposed**; not in the PDF. It comes from [decision 8](../README.md#decisions): purging is done by admins on demand, not by a scheduled job.
+
+**Auth:** 🔴 JWT + admin.
+
+**What it removes:**
+
+- events deleted more than 30 days ago, with their descriptions, tags, club links, and gallery links;
+- the flyers and gallery images those events used, unless a club logo or another event still uses them; and
+- images deleted more than 30 days ago that nothing references (replaced logos and flyers, and takedowns), with their S3 files.
+
+Nothing deleted less than 30 days ago is touched, so everything that can still be [restored](event-management.md#-post-autheventseventidrestore) survives: the purge and the restore use the same 30-day cutoff ([decision 9](../README.md#decisions)).
+
+**Status:** ⬜ Not built. The SQL exists ([query group 31](../../database/README.md#31-purge-job)); the order of the steps is in [Transactions](../../database/README.md#transactions).
+
+**Proposed contract** (Need: **Later**: there's no admin page yet).
+
+- **Request body:** none. The 30 days are fixed, not a parameter.
+- **Response `200`:**
+
+  ```json
+  { "message": "Purge complete", "eventsPurged": 3, "imagesPurged": 7, "imageFilesFailed": 0 }
+  ```
+
+  `imageFilesFailed` counts S3 deletes that failed after their database row was removed. Those leave orphan files that nothing references, which is harmless; a later cleanup can list the bucket.
+- **Errors:** `401`, `403` not an admin, `500`. Running it twice is safe; the second run finds nothing.
+
+**Plan:** [decision 8](../README.md#decisions) · [query group 31](../../database/README.md#31-purge-job)

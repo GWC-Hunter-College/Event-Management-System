@@ -1,11 +1,12 @@
 -- IS_student_authorized_event.sql
--- Authorizes a student to modify an event if they are an e-board member OR owner
--- of ANY club linked to that event.
--- Returns 1 if authorized, 0 otherwise.
--- Params:
---   ? = fk_event_id  (event id)
---   ? = fk_student_id (user sub / student id)
-
+-- Does: checks whether a student is on the e-board of, or owns, ANY club linked to
+--   an event (can manage the event).
+-- Used by: GET, PATCH and DELETE /auth/events/{eventId}, the /auth/events image routes,
+--   and the event thumbnail and gallery signers and confirms.
+-- Params, in order (event first, as in the legacy query):
+--   1. event id
+--   2. student id
+-- Returns: is_authorized, 1 or 0.
 SELECT EXISTS (
   SELECT 1
   FROM events_to_clubs etc
@@ -13,5 +14,5 @@ SELECT EXISTS (
     ON cm.fk_club_id = etc.fk_club_id
   WHERE etc.fk_event_id = ?
     AND cm.fk_student_id = ?
-    AND (cm.member_is_eboard = 1 OR cm.member_is_owner = 1)
+    AND cm.role IN ('eboard', 'owner')
 ) AS is_authorized;

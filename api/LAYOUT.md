@@ -63,11 +63,13 @@ api/
 │           ├── get/
 │           ├── update/
 │           ├── delete/
+│           ├── restore/
 │           ├── images/
 │           └── thumbnails/
 ├── admins/
 │   ├── list/
 │   ├── create/
+│   ├── purge/
 │   └── {studentId}/
 │       ├── get/
 │       └── delete/
@@ -144,6 +146,7 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`POST /auth/events/{eventId}/thumbnails`](endpoints/event-management.md#-post-autheventseventidthumbnails) | `api/auth/events/{eventId}/thumbnails/presign/` | N/A for signing; the confirm step would use `database/queries/events/thumbnails/confirm/`. | Partial; the signer is reusable behind a storage-provider abstraction, but authorization and confirmation are missing. |
 | [`POST /auth/events/{eventId}/images`](endpoints/event-management.md#-post-autheventseventidimages) | `api/auth/events/{eventId}/images/presign/` and `confirm/` | `database/queries/events/images/confirm/` for the confirm step. | Partial; the signer and confirm behavior are reusable after adding the policy, storage adapter, and transaction. |
 | [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) | `api/auth/events/{eventId}/delete/` | `database/queries/events/delete/` | N/A until built. |
+| [`POST /auth/events/{eventId}/restore`](endpoints/event-management.md#-post-autheventseventidrestore) | `api/auth/events/{eventId}/restore/` | `database/queries/events/restore/` and `database/queries/authorization/events/manages_owner_club/`. | N/A until built. |
 
 ### Images
 
@@ -166,6 +169,7 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`GET /admins/{studentId}`](endpoints/admins.md#-get-adminsstudentid) | `api/admins/{studentId}/get/` | `database/queries/admins/get/` | Partial; the schema intent is clear, but the stub isn't parameterized, working SQL. |
 | [`POST /admins`](endpoints/admins.md#-post-admins) | `api/admins/create/` | `database/queries/admins/create/` | N/A until built. |
 | [`DELETE /admins/{studentId}`](endpoints/admins.md#-delete-adminsstudentid) | `api/admins/{studentId}/delete/` | `database/queries/admins/delete/` | Partial; only obsolete SQL-shaped notes exist. |
+| [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) | `api/admins/purge/` | `database/queries/events/purge/` and `database/queries/images/purge/`, plus the storage adapter for S3 deletes. | N/A until built. |
 
 ### Operational
 

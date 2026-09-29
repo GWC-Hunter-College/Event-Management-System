@@ -1,14 +1,14 @@
 -- UPDATE_images_of_purgeable_events.sql
--- Does: soft-deletes the flyers and gallery images of events that are about to be
---   purged, unless a club logo or an event outside the purge still uses them. Each
---   image takes its event's deleted_at, so the image purge in the same run removes it.
--- Used by: the purge batch job (internal), step 1, before DELETE_purgeable_events.sql,
---   in the same transaction.
--- Params, in order:
---   1. retention period in days: events deleted longer ago than this are purged
+-- Does: soft-deletes the flyers and gallery images of events deleted more than 30
+--   days ago (the events the purge is about to remove), unless a club logo or an
+--   event outside the purge still uses them. Each image takes its event's deleted_at,
+--   so the image purge in the same run removes it.
+-- Used by: POST /admins/purge, step 1, before DELETE_purgeable_events.sql in the
+--   same transaction.
+-- Params: none. The 30 days match the restore window in events/restore/.
 -- Returns: affected rows.
 UPDATE images i
-JOIN (SELECT CURRENT_TIMESTAMP - INTERVAL ? DAY AS cutoff) p
+JOIN (SELECT CURRENT_TIMESTAMP - INTERVAL 30 DAY AS cutoff) p
 JOIN events e
   ON e.deleted_at < p.cutoff
   AND (

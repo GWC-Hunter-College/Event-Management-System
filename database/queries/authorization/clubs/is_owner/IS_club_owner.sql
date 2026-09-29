@@ -1,7 +1,8 @@
 -- IS_club_owner.sql
 -- Does: checks whether a student owns a club. Owner-only actions need this, not
 --   the e-board-or-owner check in can_manage.
--- Used by: PUT /clubs/{clubId}/members/roles (403 otherwise).
+-- Used by: PUT /clubs/{clubId}/members/roles (403 otherwise), and
+--   DELETE /clubs/{clubId}/members/me after a delete that affected 0 rows.
 -- Params, in order:
 --   1. student id
 --   2. club id
@@ -11,5 +12,5 @@ SELECT EXISTS (
   FROM club_members
   WHERE fk_student_id = ?
     AND fk_club_id = ?
-    AND member_is_owner = TRUE
+    AND role = 'owner'
 ) AS is_owner;

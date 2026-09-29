@@ -1,6 +1,6 @@
 -- UPDATE_image_soft_delete_if_unused.sql
 -- Does: soft-deletes a file once nothing references it, so removing one use never
---   removes a file another club logo, flyer or gallery still shows. The purge job
+--   removes a file another club logo, flyer or gallery still shows. POST /admins/purge
 --   removes the row and the S3 object later.
 -- Used by: the logo and flyer confirms, for the file they replaced, after the new
 --   pointer is set, inside the same transaction.

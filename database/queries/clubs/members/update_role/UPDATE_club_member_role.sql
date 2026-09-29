@@ -1,6 +1,5 @@
 -- UPDATE_club_member_role.sql
--- Does: sets a member's role. Owner sets both flags, eboard only the e-board flag,
---   member neither. Demoting the club's last owner affects 0 rows.
+-- Does: sets a member's role. Demoting the club's last owner affects 0 rows.
 -- Used by: PUT /clubs/{clubId}/members/roles, after SELECT_club_owners_for_update.sql
 --   and authorization/clubs/is_owner/IS_club_owner.sql (the caller must be an owner).
 -- Params, in order:
@@ -22,15 +21,13 @@ JOIN (
 LEFT JOIN (
   SELECT fk_club_id, COUNT(*) AS owner_count
   FROM club_members
-  WHERE member_is_owner = TRUE
+  WHERE role = 'owner'
   GROUP BY fk_club_id
 ) o ON o.fk_club_id = cm.fk_club_id
-SET
-  cm.member_is_eboard = (p.new_role IN ('eboard', 'owner')),
-  cm.member_is_owner = (p.new_role = 'owner')
+SET cm.role = p.new_role
 WHERE p.new_role IN ('member', 'eboard', 'owner')
   AND (
     p.new_role = 'owner'
-    OR cm.member_is_owner = FALSE
+    OR cm.role <> 'owner'
     OR COALESCE(o.owner_count, 0) > 1
   );

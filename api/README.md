@@ -71,7 +71,9 @@ A JWT tells you *who* the caller is. Roles live in MySQL, and a handler only enf
 | `owner` | `club_members.member_is_owner = TRUE` | Nothing yet; creating a club doesn't make you its owner. | The same unused role checks. The leave-club SQL refuses to delete an owner's membership. |
 | `admin` | An `admins (fk_student_id)` row | Nothing yet; [admin routes are planned](endpoints/admins.md). | Nothing; there's no [admin check](endpoints/internal.md#-admin-check) yet. |
 
-[`GET /me/clubs`](endpoints/me.md#-get-meclubs) reports one role per club, `owner` over `eboard` over `member`, because the schema doesn't make the flags mutually exclusive. A verified club (a row in `verified_clubs`) is a directory filter, not a role, and `events_to_clubs.club_is_event_owner` marks an event's host club, not a user role.
+[`GET /me/clubs`](endpoints/me.md#-get-meclubs) reports one role per club, `owner` over `eboard` over `member`, because the deployed schema doesn't make the flags mutually exclusive.
+
+The table above is the deployed (legacy) schema. In the [baseline schema](../database/migrations/schema/2026_09_29_baseline_up.sql), `club_members` has one `role` column, `member`, `eboard`, or `owner`, so a member has exactly one role ([decision 11](#decisions)). The e-board list is `role IN ('eboard', 'owner')`. Admins are still rows in `admins`. A verified club (a row in `verified_clubs`) is a directory filter, not a role, and `events_to_clubs.club_is_event_owner` marks an event's host club, not a user role.
 
 **Today, 🔴 routes check identity only. No deployed route enforces an e-board, owner, or admin role.**
 
@@ -122,6 +124,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🔴 | POST | `/auth/events/{eventId}/thumbnails` | Presigned upload for an event thumbnail. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-post-autheventseventidthumbnails) |
 | 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
 | 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
+| 🔴 | POST | `/auth/events/{eventId}/restore` | Restores an event deleted less than 30 days ago (owning club's e-board or owners, or an admin). Proposed; not in the PDF. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidrestore) |
 | **Images** | | | | | | |
 | 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
 | 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
@@ -135,7 +138,8 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🔴 | GET | `/admins` | Lists admins. | ⬜ | Later | [admins.md](endpoints/admins.md#-get-admins) |
 | 🔴 | GET | `/admins/{studentId}` | Returns one admin. | ⬜ | Later | [admins.md](endpoints/admins.md#-get-adminsstudentid) |
 | 🔴 | POST | `/admins` | Promotes a student to admin. | ⬜ | Later | [admins.md](endpoints/admins.md#-post-admins) |
-| 🔴 | DELETE | `/admins/{studentId}` | Demotes an admin. | ⬜ | Later | [admins.md](endpoints/admins.md#-delete-adminsstudentid) |
+| 🔴 | DELETE | `/admins/{studentId}` | Demotes an admin; never the last one. | ⬜ | Later | [admins.md](endpoints/admins.md#-delete-adminsstudentid) |
+| 🔴 | POST | `/admins/purge` | Permanently removes events and images deleted more than 30 days ago (admins only). Proposed; not in the PDF. | ⬜ | Later | [admins.md](endpoints/admins.md#-post-adminspurge) |
 | **Verification** | | | | | | |
 | 🔴 | POST | `/clubs/{clubId}/verification` | Marks a club verified. | ⬜ | Later | [verification.md](endpoints/verification.md#-post-clubsclubidverification) |
 | 🔴 | DELETE | `/clubs/{clubId}/verification` | Removes a club's verification. | ⬜ | Later | [verification.md](endpoints/verification.md#-delete-clubsclubidverification) |
@@ -151,7 +155,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🟢 | GET | `/database/test` | Database connectivity check. Dormant: neither API registers it. | 🟨 | — | [operational.md](endpoints/operational.md#-get-databasetest) |
 
 
-**Totals:** 41 HTTP endpoints and 6 internal functions. `gateway/routes` registers 19 of the endpoints: 18 are deployed on both the dev and prod APIs (12 🟢 and 6 🔴; 14 ✅ and 4 🟨), and `GET /database/test` is dormant. The other 22 endpoints are planned: 21 from the PDF and 1 proposed from the frontend. By frontend need: 22 endpoints and functions are **Now**, 20 are **Later**, and 5 are **—**.
+**Totals:** 43 HTTP endpoints and 6 internal functions. `gateway/routes` registers 19 of the endpoints: 18 are deployed on both the dev and prod APIs (12 🟢 and 6 🔴; 14 ✅ and 4 🟨), and `GET /database/test` is dormant. The other 24 endpoints are planned: 21 from the PDF, 1 proposed from the frontend, and 2 from the [decisions](#decisions) (restore and purge). By frontend need: 22 endpoints and functions are **Now**, 22 are **Later**, and 5 are **—**.
 
 **Preflight routes:** `POST /clubs/{clubId}/events/{eventId}/thumbnails`, `.../images`, and `.../images/confirm` also register `OPTIONS` against the same Lambda for CORS preflight. Those aren't separate endpoints.
 
@@ -177,12 +181,19 @@ An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code
 Product decisions taken on 2026-09-29. The proposed contracts they affect are updated to match; items that need a frontend change are listed in [coverage.md](coverage.md#frontend-changes).
 
 1. **Default event status.** When the create-event body omits `status`, the event is created as a draft. The design-mode mock, which defaults to `posted`, changes to match.
-2. **Status transitions.** Statuses are `draft`, `posted`, and `cancelled`: the life of an event that still exists. Allowed: `draft → posted`, `posted → cancelled`, and `cancelled → posted`. Nothing goes back to `draft`. There's no `archived` status. [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) soft-deletes an event in any status: it sets `deleted_at`, every read skips the event from then on, and a batch job hard-deletes it (and its now-unused S3 files) once it has been deleted for longer than the retention period. Updated 2026-09-29 by the [schema decisions](../database/docs/schema-review.md#decisions). See [Event status](endpoints/events.md#event-status).
+2. **Status transitions.** Statuses are `draft`, `posted`, and `cancelled`: the life of an event that still exists. Allowed: `draft → posted`, `posted → cancelled`, and `cancelled → posted`. Nothing goes back to `draft`. There's no `archived` status. [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) soft-deletes an event in any status: it sets `deleted_at`, and every read skips the event from then on. It can be restored for 30 days (decision 9), and after that an admin's purge removes it for good (decision 8). Updated 2026-09-29 by the [schema decisions](../database/docs/schema-review.md#decisions). See [Event status](endpoints/events.md#event-status).
 3. **Event lists.** `limit` defaults to 50, with a maximum of 100. Upcoming events are ordered by start time ascending, past events descending. Lists carry the flyer URL and a photo count (`imageCount`); only the single-event read, [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid), returns the full gallery (`images`). See the [proposed event object](endpoints/events.md#proposed-event-object).
 4. **Flyer alt text** is stored on `images`, with the flyer's image row.
 5. **Club topics** come from a fixed list, stored as lowercase keys, at most 3 per club; the UI uppercases them. The design-mode fixtures change to use the same list. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
 6. **Club roles.** Owners and e-board members can edit club info. Only owners can change roles or delete the club. Owners and e-board members can see member emails; regular members can't.
 7. **GWC website.** The site finds its club through a configured club ID.
+8. **Purging is done by admins, on demand.** There's no scheduled job. [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) (🔴, admin) permanently removes events and images deleted **more than 30 days ago**, and the S3 files nothing uses any more.
+9. **Deleted events can be restored for 30 days.** [`POST /auth/events/{eventId}/restore`](endpoints/event-management.md#-post-autheventseventidrestore) (🔴, e-board or owner of the event's **owning** club, or an admin) clears `deleted_at` only when the event was deleted less than 30 days ago. The purge uses the same 30-day cutoff, so nothing restorable is ever purged.
+10. **Date-only list bounds cover whole days in `America/New_York`.** `startDate=2026-10-01` starts at 00:00 on October 1; `endDate=2026-10-31` includes all of October 31, so the range ends before 00:00 on November 1. An event matches if it overlaps the range, so a multi-day event that starts before the range still shows up. Full timestamps with an offset are accepted too. Event start and end times themselves stay full UTC timestamps. See [proposed list parameters](endpoints/events.md#proposed-list-parameters).
+11. **One role per member.** `club_members.role` is `member`, `eboard`, or `owner`. The e-board list includes owners. A club's last owner can't be demoted and can't leave; an owner can leave while the club has another owner.
+12. **Admin rules.** Admins can add and remove other admins, but the last admin can't be removed, including by themselves. A developer creates the first admin with a one-off SQL insert ([how](../database/README.md#the-first-admin)).
+
+Still open: whether an event's author, or an admin, gets management rights beyond the linked clubs' e-board and owners (see [Open questions](#open-questions)). Decisions 8–12 were taken on 2026-09-29, after the first seven.
 
 ## Open questions
 
@@ -192,7 +203,8 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 
 - Should creating a club make the creator its owner, and should creating one require an admin? The frontend already assumes the creator becomes owner ([query group 29](../database/README.md#29-club-creator-ownership)).
 - How does `PUT /clubs/{clubId}/members/roles` say which member to change? (Who may change roles is [decision 6](#decisions).) The proposal puts `studentId` in the body.
-- Admins: how is the first admin created, can admins demote themselves, and what protects the last admin? What does "their id and clubs" in `GET /admins` mean?
+- Admins: what does "their id and clubs" in `GET /admins` mean? (Bootstrapping and the last admin are [decision 12](#decisions).)
+- Does an event's author, or an admin, get management rights beyond the linked clubs' e-board and owners? Today only an admin's [restore](endpoints/event-management.md#-post-autheventseventidrestore) and [takedown](endpoints/images.md#-delete-imagesimageid) go beyond them.
 - Who may verify and unverify clubs? The PDF only marks those routes protected; the admins stub note says admins do it.
 - Should unverified clubs stay publicly readable through `GET /clubs/{clubId}` (current behavior), or be admin-only with a verified badge (a PDF p. 50 suggestion)?
 - Which token should clients send? The handlers read `email` from the token, but the access token the frontend sends has none.

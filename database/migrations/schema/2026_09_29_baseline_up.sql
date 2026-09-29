@@ -7,8 +7,9 @@
 --   Event start and end times are DATETIME in UTC. Compare them with UTC_TIMESTAMP().
 --   created_at, updated_at and deleted_at are TIMESTAMP, which MySQL stores in UTC.
 --   Compare them with CURRENT_TIMESTAMP.
---   deleted_at marks a soft-deleted row. Reads skip it, and a batch job hard-deletes
---   rows that have been deleted for longer than the retention period.
+--   deleted_at marks a soft-deleted row. Reads skip it. For 30 days the row can be
+--   restored, and after that only an admin's purge can hard-delete it. The restore
+--   and purge queries both hard-code the 30 days, so nothing restorable is purged.
 --   Every foreign key is named, so a later migration can alter it.
 --
 -- Runs on an empty database. Written so a runner that splits on semicolons works:
@@ -82,14 +83,15 @@ CREATE TABLE `club_info` (
   CONSTRAINT `fk_club_info_club` FOREIGN KEY (`fk_club_id`) REFERENCES `clubs` (`id`) ON DELETE CASCADE
 );
 
--- Membership and roles. An owner row also has member_is_eboard set.
+-- Membership. Each member has exactly one role. The e-board list is
+-- role IN ('eboard', 'owner'). A club's last owner can't be demoted and can't leave,
+-- which the role-update and leave queries enforce.
 CREATE TABLE `club_members` (
   `fk_student_id` CHAR(36) NOT NULL,
   `fk_club_id` INT NOT NULL,
-  `member_is_eboard` BOOL NOT NULL DEFAULT FALSE,
-  `member_is_owner` BOOL NOT NULL DEFAULT FALSE,
+  `role` ENUM ('member', 'eboard', 'owner') NOT NULL DEFAULT 'member',
   PRIMARY KEY (`fk_student_id`, `fk_club_id`),
-  KEY `idx_club_members_club` (`fk_club_id`),
+  KEY `idx_club_members_club_role` (`fk_club_id`, `role`),
   CONSTRAINT `fk_club_members_student` FOREIGN KEY (`fk_student_id`) REFERENCES `students` (`id`),
   CONSTRAINT `fk_club_members_club` FOREIGN KEY (`fk_club_id`) REFERENCES `clubs` (`id`)
 );

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -81,6 +82,27 @@ func TestNewQueriesDocumentThemselves(t *testing.T) {
 				t.Errorf("name prefix %q isn't one of the naming conventions", prefix)
 			}
 		})
+	}
+}
+
+// TestEverySQLFileIsEmbedded catches a query directory missing from the go:embed
+// list, which would make Load fail for its files at run time.
+func TestEverySQLFileIsEmbedded(t *testing.T) {
+	embedded := make(map[string]bool)
+	for _, path := range embeddedPaths(t) {
+		embedded[path] = true
+	}
+	err := fs.WalkDir(os.DirFS("."), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasSuffix(path, ".sql") && !embedded[path] {
+			t.Errorf("%s isn't in the go:embed list", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

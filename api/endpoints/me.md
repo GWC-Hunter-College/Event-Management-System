@@ -97,7 +97,7 @@ Lists every club the caller has joined, with the caller's role in each. The fron
 - `thumbnailUrl` holds the logo's S3 object key, not a signed or public URL. It's omitted when the club has no logo.
 - The schema doesn't make the two role flags mutually exclusive; `owner` wins.
 
-**Proposed changes** (Need: **Now**; screens: My Clubs cards, and every page that derives the viewer's role): `thumbnailUrl` becomes a readable URL ([proposed club object](clubs.md#proposed-club-object)). `role` and the envelope are unchanged.
+**Proposed changes** (Need: **Now**; screens: My Clubs cards, and every page that derives the viewer's role): `thumbnailUrl` becomes a readable URL ([proposed club object](clubs.md#proposed-club-object)). `role` and the envelope are unchanged; in the baseline schema `role` is read straight from `club_members.role` ([decision 11](../README.md#decisions)). Clubs are ordered by name.
 
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/clubs/get.go`](../../infrastructure/legacy/lambda/api/me/clubs/get.go) · SQL [`students/SELECT_student_clubs.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_clubs.sql) · [query group 3](../../database/README.md#3-current-students-clubs-and-roles)
 
@@ -137,7 +137,7 @@ Lists posted events linked to any club the caller has joined. The frontend's My 
 
 Lists the clubs where the caller is e-board or owner (PDF). Until it exists, the frontend's Create and New event step 1 pages work this out from `GET /me/clubs`.
 
-**Auth:** 🔴 JWT (PDF). Caller-scoped: memberships with `member_is_eboard` or `member_is_owner` set.
+**Auth:** 🔴 JWT (PDF). Caller-scoped: memberships with role `eboard` or `owner`.
 
 **Request:** none planned. A PDF note suggests the path might be `{me_id}/clubs/eboard` instead.
 

@@ -13,11 +13,11 @@ import (
 //go:embed clubs/members/create/*.sql clubs/members/leave/*.sql clubs/members/list/*.sql clubs/members/update_role/*.sql
 //go:embed clubs/events/list/*.sql clubs/events/drafts/*.sql clubs/thumbnails/confirm/*.sql
 //go:embed clubs/verification/create/*.sql clubs/verification/delete/*.sql
-//go:embed events/read/*.sql events/create/*.sql events/update/*.sql events/delete/*.sql events/purge/*.sql
+//go:embed events/read/*.sql events/create/*.sql events/update/*.sql events/delete/*.sql events/restore/*.sql events/purge/*.sql
 //go:embed events/images/list/*.sql events/images/confirm/*.sql events/thumbnails/confirm/*.sql
 //go:embed images/create/*.sql images/get/*.sql images/release/*.sql images/delete/*.sql images/purge/*.sql
 //go:embed authorization/clubs/can_manage/*.sql authorization/clubs/is_member/*.sql authorization/clubs/is_owner/*.sql
-//go:embed authorization/events/can_manage/*.sql authorization/admins/is_admin/*.sql
+//go:embed authorization/events/can_manage/*.sql authorization/events/manages_owner_club/*.sql authorization/admins/is_admin/*.sql
 //go:embed admins/list/*.sql admins/get/*.sql admins/create/*.sql admins/delete/*.sql
 var files embed.FS
 

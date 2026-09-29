@@ -16,12 +16,22 @@ Taken on 2026-09-29, in answer to this review's questions.
 4. **`events.deleted_at` is the delete marker, and there's no `archived` status** ([S2](#s2-deleting-an-event)).
    - Statuses are `draft`, `posted`, and `cancelled`: the life of an event that still exists.
    - `DELETE /auth/events/{eventId}` sets `deleted_at` to now, and every read filters on `deleted_at IS NULL`. Nothing hard-deletes on a request.
-   - A batch job hard-deletes rows that have been deleted for longer than a set retention period, and removes their S3 files.
-   - `images` has a `deleted_at` too, so the same job cleans up S3 files.
+   - Rows deleted long enough ago are hard-deleted later, with their S3 files. (Decisions 8 and 9 set how: an admin's purge, and a 30-day window.)
+   - `images` has a `deleted_at` too, so the same purge cleans up S3 files.
    - api/README.md's [decision 2](../../api/README.md#decisions) and the [event status docs](../../api/endpoints/events.md#event-status) are updated to match.
 5. **Deleting an image** (Later). Removing a use (take a photo out of a gallery, replace a logo or flyer) deletes only the reference, and the file goes once nothing references it. A takedown by the owning club or an admin removes every reference, then the file ([I4](#i4-deleting-an-image)).
 6. **Concurrent edits to an event:** last write wins for now. Add a `version` column when the edit form ships ([E1](#e1-updating-a-draft-in-place-m12)).
 7. **Image URLs:** signed GET URLs with about a one-hour expiry. A CDN can come later ([I5](#i5-from-row-to-url-m6)).
+
+Follow-up decisions, also taken on 2026-09-29, in answer to the queries' open questions. They're [API decisions 8–12](../../api/README.md#decisions).
+
+8. **Purging is done by admins, on demand.** `POST /admins/purge` (🔴, admin) runs the purge queries. There's no scheduled job. It only removes events and images deleted more than 30 days ago ([S2](#s2-deleting-an-event)).
+9. **Deleted events can be restored for 30 days.** `POST /auth/events/{eventId}/restore` (🔴, e-board or owner of the event's owning club, or an admin) clears `deleted_at` only when the event was deleted less than 30 days ago. The purge uses the same cutoff, so nothing restorable is ever purged ([S2](#s2-deleting-an-event)).
+10. **Date-only list bounds cover whole days in `America/New_York`**, with the end date inclusive (an exclusive bound at 00:00 the next day), and an event matches when it overlaps the range. Full timestamps with an offset are accepted too. Stored times stay UTC ([T1](#t1-store-start-and-end-in-utc)).
+11. **One role per member:** `club_members.role ENUM('member', 'eboard', 'owner') NOT NULL DEFAULT 'member'` replaces the two flags. The e-board list is `role IN ('eboard', 'owner')`. A club's last owner can't be demoted and can't leave ([M2](#m2-one-role-per-member)).
+12. **Admins:** admins add and remove other admins, but the last admin can't be removed, including by themselves. A developer creates the first admin with a one-off SQL insert ([database/README.md](../README.md#the-first-admin)).
+
+Still open: whether an event's author, or an admin, gets management rights beyond the linked clubs' e-board and owners.
 
 ## Summary
 
@@ -33,7 +43,7 @@ Taken on 2026-09-29, in answer to this review's questions.
 | [I4](#i4-deleting-an-image) | No deletion semantics | `images.deleted_at`; release, takedown, and purge queries | `DELETE /images`, logo and flyer replacement |
 | [I5](#i5-from-row-to-url-m6) | Reads return `object_key` or placeholders, not URLs | No schema change; views return every key an event needs | Every club and event read |
 | [S1](#s1-one-status-vocabulary) | `drafted` vs `draft`; no `cancelled`; nullable | `ENUM('draft', 'posted', 'cancelled') NOT NULL DEFAULT 'draft'` | Every event read, create, `PATCH`, drafts list |
-| [S2](#s2-deleting-an-event) | `archived` and `deleted_at` overlap | `deleted_at` only; purge job | Every event read, `DELETE /auth/events` |
+| [S2](#s2-deleting-an-event) | `archived` and `deleted_at` overlap | `deleted_at` only; 30-day restore; admin purge | Every event read, `DELETE /auth/events`, restore, `POST /admins/purge` |
 | [S3](#s3-allowed-transitions) | Transitions not enforced anywhere | Enforced in each status `UPDATE` | `PATCH /auth/events` |
 | [T1](#t1-store-start-and-end-in-utc) | Wall-clock `DATETIME` read as browser-local time | UTC `DATETIME` | Every event read and write |
 | [T2](#t2-timestamp-defaults) | `created_at`/`updated_at` have no defaults | Defaults and `ON UPDATE` | Drafts list order, `PATCH` |
@@ -42,11 +52,11 @@ Taken on 2026-09-29, in answer to this review's questions.
 | [C3](#c3-editing-a-club) | Editing a club | No change needed | `PATCH /clubs/{clubId}` (Later) |
 | [E1](#e1-updating-a-draft-in-place-m12) | Updating a draft in place | Covered by T2 and M1 | `PATCH /auth/events/{eventId}` |
 | [M1](#m1-missing-primary-keys) | `verified_clubs`, `admins`, `event_descriptions` have no primary key | Primary keys | Verified filter, admin check, event reads, `PATCH` |
-| [M2](#m2-nullable-role-flags) | Nullable role flags | `NOT NULL DEFAULT FALSE` | Leave club, role checks, `GET /me/clubs` |
+| [M2](#m2-one-role-per-member) | Two nullable role flags | One `role` column | Leave club, role checks, member list, `GET /me/clubs` |
 | [M3](#m3-one-owner-club-per-event) | Nothing stops two owner clubs per event | Functional UNIQUE index | Every event read (`owners.owner`) |
 | [M4](#m4-other-nullable-columns) | Other nullable columns | `NOT NULL` where every write sets a value | Club and event reads |
 | [K1](#k1-indexes) | Indexes | `events (status, start_date)` and named indexes for every foreign key | Event lists, drafts list, member count |
-| [F1](#f1-on-delete-behavior) | No `ON DELETE` actions | The target policy, applied | Purge job; future club and account deletion |
+| [F1](#f1-on-delete-behavior) | No `ON DELETE` actions | The target policy, applied | Admin purge; future club and account deletion |
 | [V1](#v1-read-views) | Every event read repeats the same joins | Views `event_details` and `club_details` | Every club and event read |
 | [H1](#h1-event-edit-history), [H2](#h2-event-tags) | Older designs: edit history, event tags | Note only | Not covered by the API yet |
 
@@ -91,7 +101,7 @@ Decision 5, with `images.deleted_at` from decision 4. Foreign keys from uses to 
 - **Removing a use** (replace a logo or flyer; later, take a photo out of a gallery or unpin it): remove the reference, then soft-delete the file only if nothing else references it ([`UPDATE_image_soft_delete_if_unused.sql`](../queries/images/release/UPDATE_image_soft_delete_if_unused.sql)). Both thumbnail confirms do this for the file they replace.
 - **Takedown** (`DELETE /images/{imageId}`, by the owning club's managers or an admin; for example someone asks to be taken out of a photo): in one transaction, clear every logo and flyer pointer, delete every gallery link, then soft-delete the file ([`images/delete/`](../queries/images/delete/)). The file stops being served at once, because no read reaches it any more, and signed URLs already handed out expire within the hour (decision 7).
 - **Invariant:** a referenced image never has `deleted_at` set, except through an event that is itself soft-deleted.
-- **Purge** (🔵 batch job): hard-deletes the row, then deletes the S3 object. See [S2](#s2-deleting-an-event) for the order.
+- **Purge** (`POST /admins/purge`, decision 8): once a file has been deleted for more than 30 days, hard-deletes the row, then deletes the S3 object. See [S2](#s2-deleting-an-event) for the order.
 - **Failed object deletes** leave an orphan object, which is harmless: the row is already gone, so nothing points at it. The row is deleted first so a failure can never leave a row pointing at a missing object.
 - If edit history (H1) should show past flyers, a replaced flyer must be kept while a revision references it. The release query's reference check handles that once revisions reference images.
 
@@ -127,13 +137,14 @@ No schema change. Store only `object_key`, never a URL: signed URLs expire, and 
 
 - `DELETE /auth/events/{eventId}` runs [`UPDATE_event_soft_delete.sql`](../queries/events/delete/UPDATE_event_soft_delete.sql): `deleted_at = CURRENT_TIMESTAMP` for an event in any status. `status` isn't touched.
 - Every read goes through the `event_details` view, which filters `deleted_at IS NULL` in one place, so no query can forget it. The locking reads and status updates filter it too. A deleted event is `404` everywhere, for managers as well.
-- **The purge job** (🔵, internal, [query group 31](../README.md#31-purge-job)) runs with a retention period in days:
-  1. In one transaction: soft-delete the flyers and gallery images of events past retention, unless a club logo or an event outside the purge still uses them; each image takes its event's `deleted_at`. Then hard-delete those events. Their description, tags, club links, and gallery links go with them (`ON DELETE CASCADE`, F1).
-  2. Find images past retention that nothing references, oldest first, in batches.
+- **Restore** (decision 9): [`UPDATE_event_restore.sql`](../queries/events/restore/UPDATE_event_restore.sql) clears `deleted_at` only when `deleted_at > CURRENT_TIMESTAMP - INTERVAL 30 DAY`. Deleting never touches the event's status, club links, or images, so a restored event comes back as it was.
+- **The purge** (decision 8, `POST /admins/purge`, [query group 31](../README.md#31-purge-job)) runs when an admin asks, and only touches rows deleted more than 30 days ago:
+  1. In one transaction: soft-delete the flyers and gallery images of those events, unless a club logo or an event outside the purge still uses them; each image takes its event's `deleted_at`. Then hard-delete those events. Their description, tags, club links, and gallery links go with them (`ON DELETE CASCADE`, F1).
+  2. Find images deleted more than 30 days ago that nothing references, oldest first, in batches.
   3. For each: delete the row (the `RESTRICT` foreign keys refuse it if something references the file again), then delete the S3 object. A failed object delete leaves a harmless orphan (I4).
-- The retention period isn't decided; see [Open questions](#open-questions).
+- **One cutoff.** Every restore and purge query has `INTERVAL 30 DAY` written into it rather than taking a parameter, so a caller can't purge with a shorter window than the restore allows. Restore needs `deleted_at` newer than the cutoff and the purge older, so no row is both restorable and purgeable.
 
-**Endpoints:** every event read (Now), `DELETE /auth/events/{eventId}` (Later), the purge job.
+**Endpoints:** every event read (Now); `DELETE /auth/events/{eventId}`, `POST /auth/events/{eventId}/restore`, and `POST /admins/purge` (Later).
 
 ### S3. Allowed transitions
 
@@ -184,7 +195,7 @@ So passing the frontend's string through fails, and passing an offset string dep
 - **Reads.** The client config sets `ParseTime = true`, keeps `Loc = UTC`, and sets `Params["time_zone"] = "'+00:00'"`, so a local MySQL with a `SYSTEM` time zone behaves like RDS. The API formats every event time as RFC 3339 with `Z`: `2026-09-15T21:00:00Z`.
 - **"Now" in SQL.** `UTC_TIMESTAMP()` for the UTC `DATETIME` columns (`when=upcoming` is `end_date > UTC_TIMESTAMP()`); `CURRENT_TIMESTAMP` for the `TIMESTAMP` columns (`created_at`, `updated_at`, `deleted_at`), because both follow the session time zone. Never `NOW()` against a UTC `DATETIME`.
 - **What `timezone` is for:** the IANA zone the event takes place in. The Event page uses it to show times, and `.ics` export writes it as `TZID`. It never changes how the stored value is read. `NOT NULL DEFAULT 'America/New_York'`. The API validates it with `time.LoadLocation`.
-- **Date-only list bounds** (`startDate=2026-09-01`) need a zone. Treat them as midnight in `America/New_York`, or accept only full timestamps with an offset; see [Open questions](#open-questions).
+- **Date-only list bounds** (decision 10): `startDate=2026-10-01` is 00:00 on October 1 in `America/New_York`, and `endDate=2026-10-31` is an exclusive bound at 00:00 on November 1 there, both converted to UTC by the API. A full timestamp with an offset is converted as given. The list queries take the UTC range `[start, end)` and match events that overlap it.
 - `end_date >= start_date` is a `CHECK`, a backstop for the API's own rule.
 
 **Endpoints:** every event read, `POST /clubs/{clubId}/events`, `PATCH /auth/events/{eventId}` (all Now).
@@ -263,13 +274,20 @@ No schema change beyond what's elsewhere here:
 
 **Endpoints:** `GET /clubs?verified=true`, the `verified` field (Now); the admin check and admin routes (Later); event reads and `PATCH` (Now).
 
-### M2. Nullable role flags
+### M2. One role per member
 
-**November schema.** `club_members.member_is_eboard`, `club_members.member_is_owner`, and `events_to_clubs.club_is_event_owner` were nullable `BOOL`s. The leave query's `member_is_owner = FALSE` didn't match `NULL`, so such a member could never leave.
+**November schema.** `club_members.member_is_eboard`, `club_members.member_is_owner`, and `events_to_clubs.club_is_event_owner` were nullable `BOOL`s. The leave query's `member_is_owner = FALSE` didn't match `NULL`, so such a member could never leave. Two flags also allowed four combinations for three roles, so every read had to rank them (owner over e-board over member).
 
-**Baseline.** `NOT NULL DEFAULT FALSE`. The flags stay separate columns rather than one role ENUM: `GET /me/clubs` computes one role with owner first, and `PUT .../roles` takes one `role` value and writes both flags. Owners have both flags set.
+**Baseline** (decision 11). `club_members.role ENUM('member', 'eboard', 'owner') NOT NULL DEFAULT 'member'`: exactly one role per member, with nothing to rank. The index `(fk_club_id, role)` serves the owner counts and the e-board list (`role IN ('eboard', 'owner')`). `events_to_clubs.club_is_event_owner` stays a `BOOL NOT NULL DEFAULT FALSE`; it marks an event's host club, not a person's role.
 
-**Endpoints:** `DELETE /clubs/{clubId}/members/me`, the club and event role checks, `GET /me/clubs` (Now).
+Two rules the queries enforce, because a `CHECK` can't count rows:
+
+- **The last owner can't be demoted.** `UPDATE_club_member_role.sql` counts the club's owners in the same statement.
+- **The last owner can't leave.** `DELETE_club_member.sql` does the same. An owner can leave while another owner remains. The deployed legacy SQL refuses every owner.
+
+Both run after `SELECT_club_owners_for_update.sql` locks the club's owner rows, so two owners can't demote each other, or both leave, at once.
+
+**Endpoints:** `DELETE /clubs/{clubId}/members/me`, the club and event role checks, `GET /me/clubs` (Now); `PUT /clubs/{clubId}/members/roles`, the member list (Later).
 
 ### M3. One owner club per event
 
@@ -281,7 +299,7 @@ A functional UNIQUE index on `IF(club_is_event_owner, fk_event_id, NULL)`: only 
 
 The November DDL wrote `NOT NULL` nowhere.
 
-- **`NOT NULL` in the baseline:** `clubs.name`; `events.title`, `status`, `start_date`, `end_date`, `timezone`, `created_at`, `updated_at`; `images.purpose`, `object_key`, `mimetype`, `created_at`; the primary-key columns in M1 and the flags in M2.
+- **`NOT NULL` in the baseline:** `clubs.name`; `events.title`, `status`, `start_date`, `end_date`, `timezone`, `created_at`, `updated_at`; `images.purpose`, `object_key`, `mimetype`, `created_at`; the primary-key columns in M1 and `club_members.role` in M2.
 - **Nullable:**
   - `students.email` (the access token has no email; `GET /me` needs a `null` email).
   - `student_info.*`, `club_info.*`.
@@ -296,8 +314,8 @@ The Go models in [`models/`](../models/) are still the legacy copies. `Student.E
 | Filter | Index |
 | --- | --- |
 | `events` by `status`, ordered or ranged by `start_date` | `idx_events_status_start (status, start_date)`. Serves every public list and the drafts list's status filter. |
-| `events.deleted_at`, `images.deleted_at` | `idx_events_deleted`, `idx_images_deleted`, for the purge job. |
-| `events_to_clubs.fk_club_id`, `club_members.fk_club_id` | Named indexes. InnoDB appends the primary key, so they cover `(fk_club_id, fk_event_id)` and `(fk_club_id, fk_student_id)`. Member count is index-only. |
+| `events.deleted_at`, `images.deleted_at` | `idx_events_deleted`, `idx_images_deleted`, for the purge. |
+| `events_to_clubs.fk_club_id`, `club_members (fk_club_id, role)` | Named indexes. InnoDB appends the primary key, so they cover `(fk_club_id, fk_event_id)` and `(fk_club_id, role, fk_student_id)`. Member count is index-only. |
 | `event_images` by event | Primary key `(fk_event_id, fk_image_id)`. |
 | `events.fk_thumbnail_id`, `clubs.fk_logo_id`, `event_images.fk_image_id`, `images.fk_club_id`, `events.fk_author_id` | Plain named indexes, which their foreign keys need. |
 
@@ -314,7 +332,7 @@ The November schema's foreign keys declared no action, so every one was `RESTRIC
 | Use of a shared file | `RESTRICT` (the in-use check I4 relies on) | `clubs.fk_logo_id`, `events.fk_thumbnail_id`, `event_images.fk_image_id` |
 | Membership and ownership | `RESTRICT` until club and account deletion are designed | `club_members`, `admins`, the club side of `events_to_clubs`, `images.fk_club_id` |
 
-The event-side cascades are what let the purge job hard-delete an event with one `DELETE`. Nothing deletes a student or a club yet, so `RESTRICT` turns a stray manual `DELETE` into an error instead of silent loss.
+The event-side cascades are what let the purge hard-delete an event with one `DELETE`. Nothing deletes a student or a club yet, so `RESTRICT` turns a stray manual `DELETE` into an error instead of silent loss.
 
 ### V1. Read views
 
@@ -336,7 +354,7 @@ The July 2025 schema ([`history/07_11_2025_create_core_tables_up.sql`](../migrat
 The baseline stays compatible with an append-only `event_revisions` table, written in the same transaction as each `PATCH`, delete, or status change. What keeps that possible:
 
 - Updating in place with a stable `events.id` (E1).
-- Soft-deleting instead of deleting on the request (S2). A revision table would need its own answer for the purge job, which hard-deletes.
+- Soft-deleting instead of deleting on the request (S2). A revision table would need its own answer for the purge, which hard-deletes.
 - `fk_author_id` meaning the creator (a revision would record each editor).
 - Not hard-deleting a replaced flyer while a revision references it (I4).
 
@@ -350,7 +368,7 @@ Avoid the July indirection, where every read goes through `current_version_id`.
 
 [`2026_09_29_baseline_up.sql`](../migrations/schema/2026_09_29_baseline_up.sql) creates every table, loads the six topics, and creates the two views. `clubs.fk_logo_id` and `images.fk_club_id` form a cycle, so `images` is created first and its foreign key to `clubs` is added with one `ALTER` after `clubs` exists. [`_down.sql`](../migrations/schema/2026_09_29_baseline_down.sql) drops the views, drops that foreign key, and drops every table, children first. It destroys all data and is only for rebuilding a local or test database.
 
-The seed, [`seed/2026_09_29_baseline_seed.sql`](../migrations/seed/2026_09_29_baseline_seed.sql), is development data. It uses explicit ids and times relative to the day it's loaded, so it always has past, ongoing, and upcoming events. It covers drafts (one with no location), a cancelled event, multi-club events, an event with no description, events soft-deleted inside and outside a 30-day retention period, a flyer that's also in its gallery, one photo in two galleries, soft-deleted images, a club with no `club_info`, a club with two owners, and a student with a `NULL` email.
+The seed, [`seed/2026_09_29_baseline_seed.sql`](../migrations/seed/2026_09_29_baseline_seed.sql), is development data. It uses explicit ids and times relative to the day it's loaded, so it always has past, ongoing, and upcoming events. It covers drafts (one with no location), a cancelled event, multi-club events, an event with no description, an event soft-deleted 3 days ago (restorable) and one 45 days ago (purgeable), a flyer that's also in its gallery, one photo in two galleries, soft-deleted images, a club with no `club_info`, a club with two owners, and a student with a `NULL` email.
 
 ### How it was tested
 
@@ -381,7 +399,6 @@ A runner needs:
 5. **The files in the image.** The Docker image copies [`lambda/internal/database/init/migrations/`](../../infrastructure/legacy/lambda/internal/database/init/migrations/); the module's `database/migrations/` isn't packaged.
 6. **Date-sortable names.** The baseline uses `YYYY_MM_DD`, so tools that order by filename (golang-migrate, goose) apply files in date order. The history files' `MM_DD_YYYY` names don't sort, which is one more reason they're never applied.
 7. **Partial failure.** MySQL commits each DDL statement on its own, so a failure partway through a file leaves the earlier statements applied. Keep each migration small, and check its preconditions first.
-8. **The purge job's schedule and retention period**, configured outside the database.
 
 ## Notes for the queries
 
@@ -397,6 +414,4 @@ Collected from the findings above. The queries in [`queries/`](../queries/) foll
 
 ## Open questions
 
-- **Retention period** for soft-deleted events and images before the purge job hard-deletes them. The seed and tests assume 30 days.
-- **Date-only list bounds:** midnight in `America/New_York`, or full timestamps with an offset only (T1)?
-- **Restoring a deleted event** within the retention period: no endpoint does it. Is one wanted (for admins, say), or is soft delete only a grace period for the S3 cleanup?
+- Whether an event's author, or an admin, gets management rights beyond the linked clubs' e-board and owners. Nothing in the schema depends on the answer: `fk_author_id` and `admins` already exist.

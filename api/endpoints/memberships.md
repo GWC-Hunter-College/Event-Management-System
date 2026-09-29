@@ -83,7 +83,8 @@ Leaves a club as the caller; an owner can't leave. The frontend's Club page call
 
 - **Auth:** 🔴 JWT: add the Cognito authorizer to the route. Allow `DELETE` in the dev API's CORS config.
 - **Response `200`:** unchanged, `{"message": "Successfully left club", "clubId": 7, "left": true}`.
-- **Errors:** `401` no token (API Gateway), `403` the caller owns the club, `404` the caller isn't a member or the club doesn't exist, `500` ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)). Treat a `NULL` owner flag as not-owner.
+- **Errors:** `401` no token (API Gateway), `403` the caller is the club's last owner, `404` the caller isn't a member or the club doesn't exist, `500` ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)).
+- **Owners:** an owner can leave while the club has another owner; the last owner can't ([decision 11](../README.md#decisions)). The deployed SQL refuses every owner.
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) (no `Authorizer` on this registration) · handler [`clubs/clubId/members/me/delete/delete.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go) · SQL [`clubs/DELETE_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/DELETE_club_member.sql) · [query group 9](../../database/README.md#9-leave-callers-club)
 
@@ -112,7 +113,7 @@ Lists a club's members from `club_members`, paginated if needed (PDF). No fronte
   }
   ```
 
-  `role` uses the same owner-over-e-board-over-member precedence as [`GET /me/clubs`](me.md#-get-meclubs). Names come from `student_info`, which nothing writes yet, so they're usually `null`. Owners and e-board members see `email`; a regular member never does ([decision 6](../README.md#decisions)). Since this route is limited to e-board and owners, its callers always see emails. If the list is ever opened to members, `email` is left out for them.
+  `role` is the member's one role (`club_members.role` in the baseline schema, [decision 11](../README.md#decisions)). With `role=eboard`, the list has e-board members and owners. Names come from `student_info`, which nothing writes yet, so they're usually `null`. Owners and e-board members see `email`; a regular member never does ([decision 6](../README.md#decisions)). Since this route is limited to e-board and owners, its callers always see emails. If the list is ever opened to members, `email` is left out for them.
 - **Errors:** `401`, `403` not e-board or owner, `404` unknown club.
 
 **Status:** ⬜ Not built. There's only placeholder text in [`stub/lambda/clubs/clubId/members/`](../../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
@@ -143,7 +144,7 @@ Promotes a member to e-board or owner, or demotes them (PDF: `?is_eboard=<TRUE|F
 
 **Params (PDF):** path `clubId`; query `is_eboard` and `is_owner`. Nothing in the PDF's parameters says *which* member to change.
 
-**Proposed contract** (Need: **Later**; screen: promote and demote controls in the Manage tab, not built). Names the member in the body, and uses one role value instead of two flags, so a member can't end up both owner and e-board by accident:
+**Proposed contract** (Need: **Later**; screen: promote and demote controls in the Manage tab, not built). Names the member in the body, and takes one role value, which the baseline schema stores in one `role` column, so a member always has exactly one role ([decision 11](../README.md#decisions)):
 
 - **Request body:** `{ "studentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "role": "eboard" }`, where `role` is `member`, `eboard`, or `owner`.
 - **Response `200`:** `{"message": "Updated role", "clubId": 7, "studentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "role": "eboard"}`.

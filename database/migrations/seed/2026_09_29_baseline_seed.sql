@@ -10,13 +10,15 @@
 --
 -- What it covers
 --   Clubs: verified and unverified, with and without a logo, topics, club_info and members.
---     Hunter CS Club has two owners. Hiking Club has no club_info row.
+--     Hunter CS Club has two owners, every other club one. Hiking Club has no club_info row.
 --   Events: posted past and upcoming, one ongoing, one cancelled, two drafts
 --     (one with no location), two multi-club events, one with no description,
---     one soft-deleted past the 30-day retention period and one soft-deleted recently.
+--     one soft-deleted more than 30 days ago (purgeable, no longer restorable) and one
+--     soft-deleted 3 days ago (restorable).
 --   Images: logos and flyers with alt text, a gallery whose flyer is also in it,
 --     one photo in two galleries, and soft-deleted images inside and outside retention.
 --   Students: one with a NULL email, as request-time sync creates from an access token.
+--   Admins: two, so removing one is allowed and removing the second is refused.
 
 -- Students
 INSERT INTO students (id, email) VALUES
@@ -89,28 +91,27 @@ INSERT INTO club_tags (fk_club_id, slot, tag) VALUES
 
 INSERT INTO verified_clubs (fk_club_id) VALUES (2), (3), (4), (6);
 
--- Owners have both flags set.
-INSERT INTO club_members (fk_student_id, fk_club_id, member_is_eboard, member_is_owner) VALUES
-  ('55555555-5555-5555-5555-555555555555', 1, TRUE, TRUE),
-  ('66666666-6666-6666-6666-666666666666', 1, TRUE, FALSE),
-  ('44444444-4444-4444-4444-444444444444', 1, FALSE, FALSE),
-  ('11111111-1111-1111-1111-111111111111', 1, FALSE, FALSE),
-  ('11111111-1111-1111-1111-111111111111', 2, TRUE, TRUE),
-  ('44444444-4444-4444-4444-444444444444', 2, TRUE, FALSE),
-  ('22222222-2222-2222-2222-222222222222', 2, TRUE, FALSE),
-  ('77777777-7777-7777-7777-777777777777', 2, FALSE, FALSE),
-  ('88888888-8888-8888-8888-888888888888', 2, FALSE, FALSE),
-  ('12121212-1212-1212-1212-121212121212', 2, FALSE, FALSE),
-  ('33333333-3333-3333-3333-333333333333', 3, TRUE, TRUE),
-  ('99999999-9999-9999-9999-999999999999', 3, TRUE, TRUE),
-  ('88888888-8888-8888-8888-888888888888', 3, FALSE, FALSE),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 4, TRUE, TRUE),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 4, FALSE, FALSE),
-  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 5, TRUE, TRUE),
-  ('dddddddd-dddd-dddd-dddd-dddddddddddd', 6, TRUE, TRUE),
-  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 7, TRUE, TRUE),
-  ('ffffffff-ffff-ffff-ffff-ffffffffffff', 8, TRUE, TRUE),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 9, TRUE, TRUE);
+INSERT INTO club_members (fk_student_id, fk_club_id, role) VALUES
+  ('55555555-5555-5555-5555-555555555555', 1, 'owner'),
+  ('66666666-6666-6666-6666-666666666666', 1, 'eboard'),
+  ('44444444-4444-4444-4444-444444444444', 1, 'member'),
+  ('11111111-1111-1111-1111-111111111111', 1, 'member'),
+  ('11111111-1111-1111-1111-111111111111', 2, 'owner'),
+  ('44444444-4444-4444-4444-444444444444', 2, 'eboard'),
+  ('22222222-2222-2222-2222-222222222222', 2, 'eboard'),
+  ('77777777-7777-7777-7777-777777777777', 2, 'member'),
+  ('88888888-8888-8888-8888-888888888888', 2, 'member'),
+  ('12121212-1212-1212-1212-121212121212', 2, 'member'),
+  ('33333333-3333-3333-3333-333333333333', 3, 'owner'),
+  ('99999999-9999-9999-9999-999999999999', 3, 'owner'),
+  ('88888888-8888-8888-8888-888888888888', 3, 'member'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 4, 'owner'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 4, 'member'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 5, 'owner'),
+  ('dddddddd-dddd-dddd-dddd-dddddddddddd', 6, 'owner'),
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 7, 'owner'),
+  ('ffffffff-ffff-ffff-ffff-ffffffffffff', 8, 'owner'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 9, 'owner');
 
 INSERT INTO admins (fk_student_id) VALUES
   ('22222222-2222-2222-2222-222222222222'),

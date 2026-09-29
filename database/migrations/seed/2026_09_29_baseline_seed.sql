@@ -211,23 +211,26 @@ INSERT INTO event_images (fk_event_id, fk_image_id, created_at) VALUES
   (10, 'a0000000-0000-0000-0000-000000000005', CURRENT_TIMESTAMP - INTERVAL 1 DAY),
   (8, 'a0000000-0000-0000-0000-000000000008', CURRENT_TIMESTAMP - INTERVAL 50 DAY);
 
--- Announcements. Times are relative to the load date, like events.
+-- Announcements. Times are relative to the load date, like events. posted_at is set
+-- on posted rows only.
 --   1: posted by Hunter CS Club for the CS clubs, with GWC and Robotics as co-owners.
---   2 and 5: posted by GWC. 3: a GWC draft with no body yet.
+--   2 and 5: posted by GWC. 5 was drafted 25 days ago but posted 12 hours ago, so it
+--      lists first by posted time and last by creation time.
+--   3: a GWC draft with no body yet.
 --   4: soft-deleted 5 days ago (restorable). 6: soft-deleted 40 days ago (purgeable).
-INSERT INTO announcements (id, fk_author_id, title, body, status, created_at, updated_at, deleted_at) VALUES
+INSERT INTO announcements (id, fk_author_id, title, body, status, posted_at, created_at, updated_at, deleted_at) VALUES
   (1, '33333333-3333-3333-3333-333333333333', 'HunterHacks registration is open', 'Sign up by Friday. Teams of up to four.', 'posted',
-     CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 2 DAY, NULL),
+     CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 2 DAY, CURRENT_TIMESTAMP - INTERVAL 2 DAY, NULL),
   (2, '11111111-1111-1111-1111-111111111111', 'Meeting moved to Room 715', 'This week only, same time.', 'posted',
-     CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, NULL),
+     CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, CURRENT_TIMESTAMP - INTERVAL 1 DAY, NULL),
   (3, '44444444-4444-4444-4444-444444444444', 'Mentorship sign-ups', NULL, 'draft',
-     CURRENT_TIMESTAMP - INTERVAL 3 DAY, CURRENT_TIMESTAMP - INTERVAL 3 HOUR, NULL),
+     NULL, CURRENT_TIMESTAMP - INTERVAL 3 DAY, CURRENT_TIMESTAMP - INTERVAL 3 HOUR, NULL),
   (4, '99999999-9999-9999-9999-999999999999', 'Office hours cancelled', 'No office hours on Monday.', 'posted',
-     CURRENT_TIMESTAMP - INTERVAL 8 DAY, CURRENT_TIMESTAMP - INTERVAL 5 DAY, CURRENT_TIMESTAMP - INTERVAL 5 DAY),
+     CURRENT_TIMESTAMP - INTERVAL 8 DAY, CURRENT_TIMESTAMP - INTERVAL 8 DAY, CURRENT_TIMESTAMP - INTERVAL 5 DAY, CURRENT_TIMESTAMP - INTERVAL 5 DAY),
   (5, '11111111-1111-1111-1111-111111111111', 'Welcome back!', 'Our first meeting is on the calendar.', 'posted',
-     CURRENT_TIMESTAMP - INTERVAL 25 DAY, CURRENT_TIMESTAMP - INTERVAL 25 DAY, NULL),
+     CURRENT_TIMESTAMP - INTERVAL 12 HOUR, CURRENT_TIMESTAMP - INTERVAL 25 DAY, CURRENT_TIMESTAMP - INTERVAL 12 HOUR, NULL),
   (6, 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'Auditions next week', 'Bring a monologue.', 'posted',
-     CURRENT_TIMESTAMP - INTERVAL 60 DAY, CURRENT_TIMESTAMP - INTERVAL 40 DAY, CURRENT_TIMESTAMP - INTERVAL 40 DAY);
+     CURRENT_TIMESTAMP - INTERVAL 60 DAY, CURRENT_TIMESTAMP - INTERVAL 60 DAY, CURRENT_TIMESTAMP - INTERVAL 40 DAY, CURRENT_TIMESTAMP - INTERVAL 40 DAY);
 
 INSERT INTO announcements_to_clubs (fk_announcement_id, fk_club_id, club_is_announcement_owner) VALUES
   (1, 3, TRUE),

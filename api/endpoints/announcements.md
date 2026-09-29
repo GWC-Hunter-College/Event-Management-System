@@ -17,6 +17,7 @@ The SQL for every route exists in the database module ([query group 32](../../da
   "title": "HunterHacks registration is open",
   "body": "Sign up by Friday. Teams of up to four.",
   "status": "posted",
+  "postedAt": "2026-09-28T14:00:00Z",
   "createdAt": "2026-09-27T16:00:00Z",
   "updatedAt": "2026-09-27T16:00:00Z",
   "owners": {
@@ -30,7 +31,8 @@ The SQL for every route exists in the database module ([query group 32](../../da
 | --- | --- |
 | `body` | Plain text. `null` on a draft that has none yet; posting requires one. |
 | `status` | `draft` or `posted`. See [Status](#status). |
-| `createdAt`, `updatedAt` | ISO 8601 in UTC with `Z`, as events. Lists are ordered by `createdAt`. |
+| `postedAt` | When it was posted: ISO 8601 in UTC with `Z`. `null` on a draft. Posted lists are ordered by it, newest first. |
+| `createdAt`, `updatedAt` | ISO 8601 in UTC with `Z`, as events. A draft written a week before it's posted still lists by `postedAt`. |
 | `owners.owner` | The club that posted it (`club_is_announcement_owner`). |
 | `owners.associates` | Other clubs it belongs to, sorted by id; `[]` when none. |
 
@@ -43,7 +45,7 @@ No images or tags yet. When they come, they follow events: `thumbnailUrl` and `a
 | `draft` | The e-board and owners of any club it belongs to, through the [drafts list](#-get-clubsclubidannouncementsdrafts) and [`GET /auth/announcements/{announcementId}`](#-get-authannouncementsannouncementid). | Not published. The default when it's created. |
 | `posted` | Everyone. | Published. |
 
-**Allowed transition:** `draft → posted` only, through [`PATCH`](#-patch-authannouncementsannouncementid) with `"status": "posted"`, and only when there's a body. Nothing goes back to `draft`, and there's no `cancelled`. The SQL enforces it: the posting `UPDATE` requires `status = 'draft'`, so any other change affects no rows.
+**Allowed transition:** `draft → posted` only, through [`PATCH`](#-patch-authannouncementsannouncementid) with `"status": "posted"`, and only when there's a body. Posting sets `postedAt` to the current time; creating an announcement as `posted` sets it at creation. The database keeps `postedAt` set exactly when `status` is `posted`, and a restore keeps the original `postedAt`. Nothing goes back to `draft`, and there's no `cancelled`. The SQL enforces it: the posting `UPDATE` requires `status = 'draft'`, so any other change affects no rows.
 
 **Deleting** is a soft delete, as for events: [`DELETE`](#-delete-authannouncementsannouncementid) sets `deleted_at`, and every read treats the announcement as not found. It can be [restored](#-post-authannouncementsannouncementidrestore) for 30 days; after that, an admin's [purge](admins.md#-post-adminspurge) removes it for good.
 
@@ -51,7 +53,7 @@ No images or tags yet. When they come, they follow events: `thumbnailUrl` and `a
 
 ## 🟢 GET `/clubs/{clubId}/announcements`
 
-Lists a club's posted announcements, newest first. The Announcements tab calls it.
+Lists a club's posted announcements, most recently posted first (by `postedAt`). The club page's Announcements tab calls it, and so does the [GWC website](../coverage.md#gwc-website), with its configured club ID.
 
 **Auth:** 🟢 Public.
 
@@ -125,7 +127,7 @@ Creates an announcement as `clubId`, the owner club, optionally shared with othe
 | --- | --- |
 | `announcement.title` | Required and non-empty. |
 | `announcement.body` | Optional for a draft; required when `status` is `posted`. |
-| `status` | Optional, `draft` or `posted`; omitted means `draft`, as for events. |
+| `status` | Optional, `draft` or `posted`; omitted means `draft`, as for events. `posted` sets `postedAt` to now. |
 | `associates` | Optional club ids, default `[]`; duplicates and `clubId` itself are dropped. |
 
 **Response `200` (Proposed):** `{"message": "Successfully created announcement", "announcementId": 7}`, as event creation returns `eventId`.
@@ -186,8 +188,6 @@ Restores an announcement deleted less than 30 days ago, as [event restore](event
 
 **Status:** ⬜ Not built. SQL under [`announcements/restore/`](../../database/queries/announcements/restore/), with the [owning-club check](../../database/queries/authorization/announcements/manages_owner_club/IS_student_announcement_owner_club_manager.sql).
 
-## Open questions
+## Future work
 
-- Should posted announcements be ordered by when they were posted rather than created? A draft written a week before it's posted currently sorts as a week old. A `posted_at` column would fix it.
-- Should posting an announcement notify members (email or push)? Nothing in the API sends notifications yet.
-- Should the GWC website read a club's announcements through `GET /clubs/{clubId}/announcements`?
+- Notifying members when an announcement is posted (email or push). Not now: it depends on a notification system, which the bulletin board needs too. See the [open questions](../README.md#open-questions).

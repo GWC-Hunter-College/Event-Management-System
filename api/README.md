@@ -126,7 +126,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
 | 🔴 | POST | `/auth/events/{eventId}/restore` | Restores an event deleted less than 30 days ago (owning club's e-board or owners, or an admin). Proposed; not in the PDF. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidrestore) |
 | **Announcements** (Proposed; not in the PDF) | | | | | | |
-| 🟢 | GET | `/clubs/{clubId}/announcements` | Lists a club's posted announcements, newest first. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncements) |
+| 🟢 | GET | `/clubs/{clubId}/announcements` | Lists a club's posted announcements, most recently posted first. The GWC website reads it too. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncements) |
 | 🟢 | GET | `/announcements/{announcementId}` | Returns one posted announcement. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-announcementsannouncementid) |
 | 🔴 | GET | `/clubs/{clubId}/announcements/drafts` | Lists a club's draft announcements, for its e-board and owners. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) |
 | 🔴 | GET | `/auth/announcements/{announcementId}` | Returns an announcement in either status, for its managers. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-authannouncementsannouncementid) |
@@ -195,7 +195,7 @@ Product decisions taken on 2026-09-29. The proposed contracts they affect are up
 4. **Flyer alt text** is stored on `images`, with the flyer's image row.
 5. **Club topics** come from a fixed list, stored as lowercase keys, at most 3 per club; the UI uppercases them. The design-mode fixtures change to use the same list. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
 6. **Club roles.** Owners and e-board members can edit club info. Only owners can change roles or delete the club. Owners and e-board members can see member emails; regular members can't.
-7. **GWC website.** The site finds its club through a configured club ID.
+7. **GWC website.** The site finds its club through a configured club ID. It reads that club's posted announcements through the public [`GET /clubs/{clubId}/announcements`](endpoints/announcements.md#-get-clubsclubidannouncements) ([coverage](coverage.md#gwc-website)).
 8. **Purging is done by admins, on demand.** There's no scheduled job. [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) (🔴, admin) permanently removes events, images, and [announcements](endpoints/announcements.md) deleted **more than 30 days ago**, and the S3 files nothing uses any more.
 9. **Deleted events can be restored for 30 days.** [`POST /auth/events/{eventId}/restore`](endpoints/event-management.md#-post-autheventseventidrestore) (🔴, e-board or owner of the event's **owning** club, or an admin) clears `deleted_at` only when the event was deleted less than 30 days ago. The purge uses the same 30-day cutoff, so nothing restorable is ever purged.
 10. **Date-only list bounds cover whole days in `America/New_York`.** `startDate=2026-10-01` starts at 00:00 on October 1; `endDate=2026-10-31` includes all of October 31, so the range ends before 00:00 on November 1. An event matches if it overlaps the range, so a multi-day event that starts before the range still shows up. Full timestamps with an offset are accepted too. Event start and end times themselves stay full UTC timestamps. See [proposed list parameters](endpoints/events.md#proposed-list-parameters).
@@ -242,6 +242,10 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 - `students.email` is nullable, but the Go model isn't. Should `GET /me` allow a `null` email?
 - Should `/health` be split into liveness and readiness checks?
 - Should the PDF's paths, such as `/me/clubs/events`, exist as aliases? Only if a client needs them.
+
+**Future work**
+
+- Notifications: should posting an [announcement](endpoints/announcements.md) notify members (email or push)? Not now. It depends on a notification system, which the club bulletin board (the Board tab) also needs, so both wait for it.
 
 **Infrastructure**
 

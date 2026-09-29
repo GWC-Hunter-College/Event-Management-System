@@ -282,8 +282,9 @@ Changes the frontend needs to match the proposed contracts and the [decisions](R
 | --- | --- | --- | --- | --- |
 | Club info | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | ✅ | Later | 🟢 public. Logo needs M6. |
 | Upcoming events and the featured event (title, schedule, RSVP) | [`GET /clubs/{clubId}/events?when=upcoming`](endpoints/club-events.md#-get-clubsclubidevents) | ✅ | Later | 🟢 public. Needs M8, M9, and M14 to be reliable; `when` is a [proposed list parameter](endpoints/events.md#proposed-list-parameters). |
+| The club's announcements | [`GET /clubs/{clubId}/announcements`](endpoints/announcements.md#-get-clubsclubidannouncements) | ⬜ | Later | 🟢 public, posted announcements only, most recently posted first. The same public endpoint the club page uses, called with the configured club ID. |
 
-No new endpoint is needed. CORS already allows all origins. The site finds its club through a configured club ID ([decision 7](README.md#decisions)), so no lookup by name is needed.
+No new endpoint is needed: the site uses the public club routes. CORS already allows all origins. The site finds its club through a configured club ID ([decision 7](README.md#decisions)), so no lookup by name is needed.
 
 ## Admin
 

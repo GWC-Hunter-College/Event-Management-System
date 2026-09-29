@@ -200,7 +200,9 @@ CREATE TABLE `event_images` (
 -- Announcements: updates a club's e-board posts, modelled on events. status is
 -- draft or posted, and draft -> posted is the only transition. They follow the event
 -- rules for deleted_at: soft delete, 30-day restore, then an admin's purge.
--- body may be empty on a draft, and posting requires one.
+-- body may be empty on a draft, and posting requires one. posted_at is set when the
+-- announcement is posted and orders the posted lists; the CHECK keeps it set exactly
+-- when status is posted.
 -- Room to grow the way events did: a flyer is a nullable fk_thumbnail_id to images,
 -- a gallery is an announcement_images link table, and tags are announcement_tags,
 -- each cascading from announcements like their event counterparts.
@@ -210,11 +212,13 @@ CREATE TABLE `announcements` (
   `title` VARCHAR(255) NOT NULL,
   `body` TEXT NULL,
   `status` ENUM ('draft', 'posted') NOT NULL DEFAULT 'draft',
+  `posted_at` TIMESTAMP NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` TIMESTAMP NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_announcements_status_created` (`status`, `created_at`),
+  KEY `idx_announcements_status_posted` (`status`, `posted_at`),
+  CONSTRAINT `chk_announcements_posted_at` CHECK ((`status` = 'posted') = (`posted_at` IS NOT NULL)),
   KEY `idx_announcements_author` (`fk_author_id`),
   KEY `idx_announcements_deleted` (`deleted_at`),
   CONSTRAINT `fk_announcements_author` FOREIGN KEY (`fk_author_id`) REFERENCES `students` (`id`) ON DELETE SET NULL
@@ -324,6 +328,7 @@ SELECT
   a.`title`,
   a.`body`,
   a.`status`,
+  a.`posted_at`,
   a.`created_at`,
   a.`updated_at`,
   oc.`id` AS `owner_club_id`,

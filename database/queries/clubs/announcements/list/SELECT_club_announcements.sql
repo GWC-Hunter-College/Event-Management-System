@@ -1,5 +1,6 @@
 -- SELECT_club_announcements.sql
--- Does: lists a club's posted announcements, newest first, one row per announcement.
+-- Does: lists a club's posted announcements, most recently posted first, one row
+--   per announcement.
 --   Each row carries every club the announcement belongs to, not only this one.
 -- Used by: GET /clubs/{clubId}/announcements (check the club with clubs/get/EXISTS_club.sql for 404)
 -- Params, in order:
@@ -16,5 +17,5 @@ WHERE ad.status = 'posted'
     WHERE ac.fk_announcement_id = ad.id
       AND ac.fk_club_id = ?
   )
-ORDER BY ad.created_at DESC, ad.id DESC
+ORDER BY ad.posted_at DESC, ad.id DESC
 LIMIT ? OFFSET ?;

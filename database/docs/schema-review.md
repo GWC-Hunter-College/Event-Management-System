@@ -351,12 +351,12 @@ They are plain views (no stored data), so they can't go stale. They are part of 
 
 Added after the review, for the club page's Announcements tab (Later). Modelled on events, so every rule above that applies to events applies here:
 
-- **`announcements`:** `id`, `fk_author_id` (`ON DELETE SET NULL`), `title` (`NOT NULL`), `body` (`TEXT`, nullable, because a draft may not have one yet; posting requires one), `status ENUM('draft', 'posted') NOT NULL DEFAULT 'draft'`, `created_at`, `updated_at` (`ON UPDATE`), and `deleted_at`. Indexes on `(status, created_at)` for the posted lists, the author, and `deleted_at`.
+- **`announcements`:** `id`, `fk_author_id` (`ON DELETE SET NULL`), `title` (`NOT NULL`), `body` (`TEXT`, nullable, because a draft may not have one yet; posting requires one), `status ENUM('draft', 'posted') NOT NULL DEFAULT 'draft'`, `posted_at`, `created_at`, `updated_at` (`ON UPDATE`), and `deleted_at`. Indexes on `(status, posted_at)` for the posted lists, the author, and `deleted_at`.
 - **Status:** `draft → posted` is the only transition, enforced in the posting `UPDATE`'s `WHERE` clause as for events (S3). There's no `cancelled`.
 - **Deleting:** the same soft delete, 30-day restore, and admin purge as events (S2), with the same hard-coded 30 days.
 - **`announcements_to_clubs`:** `(fk_announcement_id, fk_club_id, club_is_announcement_owner)`, with the same one-owner functional index as `events_to_clubs` (M3), so one announcement can belong to several clubs (HunterHacks for the CS clubs). The announcement side cascades on delete, so the purge removes the links with it; the club side is `RESTRICT` (F1).
 - **Room to grow:** no images or tags yet. A flyer would be a nullable `fk_thumbnail_id` to `images`, a gallery an `announcement_images` link table, and tags an `announcement_tags` table, each exactly like its event counterpart. The purge would then release images the way `UPDATE_images_of_purgeable_events.sql` does.
-- **Ordering:** posted lists are ordered by `created_at`. A draft written long before it's posted sorts by when it was written; a `posted_at` column would change that, and is an [open question](../../api/endpoints/announcements.md#open-questions).
+- **`posted_at`:** set when a draft is posted (`UPDATE_announcement_status_posted.sql`), or at creation when an announcement is created as posted. Posted lists are ordered by it, newest first, so a draft written long before it's posted lists by when it went out. `CHECK ((status = 'posted') = (posted_at IS NOT NULL))` keeps the two in step; there's no way back to `draft`, so it never needs clearing. A soft delete and restore leave it unchanged.
 
 ## Older designs
 

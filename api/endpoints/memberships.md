@@ -2,7 +2,7 @@
 
 Joining and leaving clubs, plus the planned routes for listing members and changing roles. Membership and role flags live in `club_members`; see [Roles](../README.md#roles).
 
-Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Response shapes come from the handlers' response maps; example values are made up, following the [legacy club docs](../../infrastructure/legacy/docs/api/clubs.md).
+Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Response shapes come from the handlers' response maps; example values are made up, following the [implementation's club docs](../../infrastructure/legacy/docs/api/clubs.md).
 
 ## 🔴 POST `/clubs/{clubId}/members/me`
 
@@ -38,7 +38,7 @@ Joins the caller to a club as a regular member. The frontend's Club page calls i
 - The frontend's `docs/api.md` expects `404` for a missing club; the backend returns `400`.
 - Deploy risk: both API stacks declare this Lambda with the same fixed name, `PostJoinClubMemberMe`, so they can't both deploy it in one account and region. The repo doesn't show which API serves the route today.
 
-**Old name:** this is the PDF's `POST /clubs/{clubId}/members` ("join a club as a member"). The built route is self-join only; no endpoint adds a different student ([query group 19](../../database/README.md#19-add-a-specified-club-member)).
+**PDF path:** the planning PDF writes this route as `POST /clubs/{clubId}/members` ("join a club as a member"). By design it's self-join only; no endpoint adds a different student ([query group 19](../../database/README.md#19-add-a-specified-club-member)).
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/members/me/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go) · SQL [`clubs/INSERT_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_member.sql) · [query group 8](../../database/README.md#8-join-caller-to-club)
 
@@ -71,7 +71,7 @@ Leaves a club as the caller; an owner can't leave. The frontend's Club page call
 
 **Known issues:**
 
-- The fix is adding the authorizer to this route in `club_routes.go`, which is a CDK change and out of scope for docs work.
+- Fix: add the Cognito authorizer to this route's registration in `club_routes.go`.
 - The dev API's CORS config doesn't allow `DELETE` (prod's does), so browsers block this call against dev at the preflight.
 - The SQL owner guard is `member_is_owner = FALSE`, which doesn't match `NULL`, so a membership with a null owner flag can't be deleted.
 - The frontend expects `401`, `403` (owner), and `404` (not a member); the handler uses `400` for all of them.

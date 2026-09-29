@@ -2,7 +2,7 @@
 
 A club's event list, event creation, and the planned drafts list. The [event object](events.md#event-object) and [list parameters](events.md#list-parameters) are documented in events.md. Editing, publishing, and archiving are planned under [`/auth/events`](event-management.md).
 
-Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Examples follow the [legacy event docs](../../infrastructure/legacy/docs/api/events.md), with made-up values.
+Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Examples follow the [implementation's event docs](../../infrastructure/legacy/docs/api/events.md), with made-up values.
 
 ## 🟢 GET `/clubs/{clubId}/events`
 

@@ -2,7 +2,7 @@
 
 Reads about the signed-in caller. Every route here needs a Cognito JWT, and the handler uses the token's `sub` as the student ID. Before reading anything, each built handler calls [`RequireStudent`](internal.md#-requirestudent-request-time-student-sync), which creates the caller's `students` row if it's missing.
 
-Routes are registered in [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go). Response shapes come from the Go structs named below; example values are made up, following the [legacy student docs](../../infrastructure/legacy/docs/api/students.md).
+Routes are registered in [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go). Response shapes come from the Go structs named below; example values are made up, following the [implementation's student docs](../../infrastructure/legacy/docs/api/students.md).
 
 **Errors shared by every built `/me` route:**
 
@@ -86,7 +86,7 @@ Lists every club the caller has joined, with the caller's role in each. The fron
 
 ## 🔴 GET `/me/events`
 
-Lists posted events linked to any club the caller has joined. The frontend's My Clubs page (`/my-clubs`) calls it. The PDF names this route `GET /me/clubs/events` (see "Old name" below).
+Lists posted events linked to any club the caller has joined. The frontend's My Clubs page (`/my-clubs`) calls it. The planning PDF calls it `GET /me/clubs/events`.
 
 **Auth:** 🔴 JWT. Results are filtered through the caller's `club_members` rows; no role is needed.
 
@@ -110,7 +110,7 @@ Lists posted events linked to any club the caller has joined. The frontend's My 
 - Each event lists only the clubs the caller joined. If the caller joined an associate club but not the owner club, `owners.owner` is the empty object.
 - Has the shared [event list quirks](events.md#event-object): joined-row paging and unordered output.
 
-**Old name:** the PDF's `GET /me/clubs/events?startDate=&endDate=` is this route. The old path survives only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go), with a hard-coded handler ([`stub/lambda/me/clubs/events/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/events/get.go)) and stale SQL ([`GET_me_clubs_events.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql)). Don't build both paths as separate logic; keep the old one only if a compatibility need is approved.
+**PDF path:** the planning PDF writes this route as `GET /me/clubs/events?startDate=&endDate=`. A stub for that path exists only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go), with a hard-coded handler ([`stub/lambda/me/clubs/events/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/events/get.go)) and stale SQL ([`GET_me_clubs_events.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql)). This route is the one implementation; add an alias for the PDF path only if a client needs it.
 
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/events/get.go`](../../infrastructure/legacy/lambda/api/me/events/get.go) · SQL [`students/SELECT_student_events.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_events.sql) · [query group 4](../../database/README.md#4-current-students-events)
 

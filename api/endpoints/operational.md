@@ -45,6 +45,6 @@ Opens a MySQL connection and runs `SELECT 1 + 1`. **It's dormant:** the route he
 **Known issues:**
 
 - Its test query is embedded in the handler rather than being an application query.
-- Don't migrate it as a public route. Move equivalent checks into protected diagnostics or integration tests.
+- It isn't part of the public API design. Equivalent checks belong in protected diagnostics or integration tests.
 
 **Code:** route helper [`database_routes.go`](../../infrastructure/legacy/gateway/routes/database_routes.go) · integration [`test_database.go`](../../infrastructure/legacy/gateway/integrations/test_database.go) · handler [`database/test/main.go`](../../infrastructure/legacy/lambda/api/database/test/main.go)

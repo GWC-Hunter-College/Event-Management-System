@@ -1,6 +1,6 @@
 # Event management (`/auth/events`)
 
-Planned protected routes for an event's managers. The PDF's revamp moved these off `/clubs/{clubId}/events/{eventId}` because an event can belong to several clubs, so authorization shouldn't depend on a single `clubId` in the path (PDF p. 18). The PDF's original list had them as `GET`, `PATCH`, and `DELETE /clubs/{clubId}/events/{eventId}` plus `.../images` and `.../thumbnails` (pp. 11–12).
+Protected routes for an event's managers. The design puts them under `/auth/events/{eventId}` rather than `/clubs/{clubId}/events/{eventId}`: an event can belong to several clubs, so authorization shouldn't depend on a single `clubId` in the path (PDF p. 18). The PDF's first endpoint list (pp. 11–12) shows the same operations under `/clubs/{clubId}/events/{eventId}`.
 
 **None of these routes exist yet.** Some of the behavior exists elsewhere, with no auth:
 

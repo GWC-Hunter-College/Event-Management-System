@@ -1,10 +1,10 @@
 # Images
 
-Images go straight from the browser to S3 through short-lived presigned URLs. The API only signs URLs and records metadata. S3 is the current storage adapter, not part of the API contract; the [legacy image-upload architecture](../../infrastructure/legacy/docs/architecture/image-uploads.md) covers the S3 and IAM side.
+Images go straight from the browser to S3 through short-lived presigned URLs. The API only signs URLs and records metadata. S3 is the current storage adapter, not part of the API contract; the [image-upload architecture doc](../../infrastructure/legacy/docs/architecture/image-uploads.md) covers the S3 and IAM side.
 
 **No image route checks auth today.** Every deployed image route is 🟢 public, and the event-image handlers ignore `{clubId}`. The PDF intended these routes to be protected (🔴); its upload guide says auth "will be added before we release". The frontend doesn't call any of them yet; logos and flyers are placeholder `blob:` URLs in its design mode.
 
-Routes are registered in [`club_image_routes.go`](../../infrastructure/legacy/gateway/routes/club_image_routes.go) and [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go). The three event `POST` routes also register `OPTIONS` against the same Lambda for CORS preflight; the handlers don't branch on method. Response shapes come from each handler's response struct; example values are made up, following the [legacy image docs](../../infrastructure/legacy/docs/api/images.md).
+Routes are registered in [`club_image_routes.go`](../../infrastructure/legacy/gateway/routes/club_image_routes.go) and [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go). The three event `POST` routes also register `OPTIONS` against the same Lambda for CORS preflight; the handlers don't branch on method. Response shapes come from each handler's response struct; example values are made up, following the [implementation's image docs](../../infrastructure/legacy/docs/api/images.md).
 
 ## How image uploads work
 
@@ -36,7 +36,7 @@ This is the PDF's flow (pp. 25–26), with what the code does at each step.
 
 **What works end to end today:** only event gallery images can be uploaded and confirmed, and confirmation only works on a cold Lambda. Club logos and event thumbnails can be uploaded to S3, but nothing attaches them to the club or event, because their confirm routes don't exist.
 
-**Other rules:** the bucket blocks public access and enforces TLS. Object keys use a fresh UUID plus the file extension; the rest of the filename is dropped. MIME types, extensions, and file sizes aren't restricted. The PDF's generic internal `POST /images` metadata write was never built; see [internal.md](internal.md#-image-metadata-write-pdf-post-images).
+**Other rules:** the bucket blocks public access and enforces TLS. Object keys use a fresh UUID plus the file extension; the rest of the filename is dropped. MIME types, extensions, and file sizes aren't restricted. The PDF's generic internal `POST /images` metadata write isn't built; see [internal.md](internal.md#-image-metadata-write-pdf-post-images).
 
 **Errors shared by the three signing routes:**
 
@@ -47,7 +47,7 @@ This is the PDF's flow (pp. 25–26), with what the code does at each step.
 
 ## 🟢 POST `/clubs/{clubId}/thumbnails`
 
-Returns a presigned S3 PUT URL for a club logo. The PDF planned it as protected `POST /clubs/thumbnails?filetype=<FILETYPE>&filename=<FILENAME>`; the code needs `clubId` in the path and takes a JSON body instead.
+Returns a presigned S3 PUT URL for a club logo. The planning PDF writes it as protected `POST /clubs/thumbnails?filetype=<FILETYPE>&filename=<FILENAME>`; the built route takes `clubId` in the path and a JSON body instead.
 
 **Auth:** 🟢 None. PDF intent: 🔴, for the club's e-board or owner. The handler doesn't check that the club exists.
 
@@ -100,7 +100,7 @@ Saves an uploaded club logo: records the image metadata and points `clubs.fk_log
 
 ## 🟢 POST `/clubs/{clubId}/events/{eventId}/thumbnails`
 
-Returns a presigned S3 PUT URL for an event thumbnail. The PDF's revamp planned it as the protected [`POST /auth/events/{eventId}/thumbnails`](event-management.md#-post-autheventseventidthumbnails).
+Returns a presigned S3 PUT URL for an event thumbnail. Its protected version in the design is [`POST /auth/events/{eventId}/thumbnails`](event-management.md#-post-autheventseventidthumbnails).
 
 **Auth:** 🟢 None. PDF intent: 🔴, for the event's e-board or owner. The handler doesn't check that the event exists.
 
@@ -144,7 +144,7 @@ Saves an uploaded event thumbnail by pointing `events.fk_thumbnail_id` at it (st
 
 ## 🟢 POST `/clubs/{clubId}/events/{eventId}/images`
 
-Returns a presigned S3 PUT URL for an event gallery image. The PDF's revamp planned it as the protected [`POST /auth/events/{eventId}/images`](event-management.md#-post-autheventseventidimages).
+Returns a presigned S3 PUT URL for an event gallery image. Its protected version in the design is [`POST /auth/events/{eventId}/images`](event-management.md#-post-autheventseventidimages).
 
 **Auth:** 🟢 None. PDF intent: 🔴, for the event's e-board or owner. The handler doesn't check that the event exists or that it belongs to the club.
 

@@ -2,7 +2,7 @@
 
 Club discovery, detail, and creation. Related routes live elsewhere: joining and leaving in [memberships.md](memberships.md), a club's events in [club-events.md](club-events.md), logo uploads in [images.md](images.md), and verification writes in [verification.md](verification.md).
 
-Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Response shapes come from [`models.Club` and `models.ClubDetailed`](../../infrastructure/legacy/database/models/club.go); example values are made up, following the [legacy club docs](../../infrastructure/legacy/docs/api/clubs.md).
+Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go). Response shapes come from [`models.Club` and `models.ClubDetailed`](../../infrastructure/legacy/database/models/club.go); example values are made up, following the [implementation's club docs](../../infrastructure/legacy/docs/api/clubs.md).
 
 **Club object:** list responses return `id`, `name`, and `thumbnailUrl`. The detail response adds `website_url` and `description`, in snake_case while the other keys are camelCase. `thumbnailUrl` is the logo's S3 object key, not a URL, and it's omitted when the club has no logo.
 
@@ -33,7 +33,7 @@ No clubs returns `200` with `"clubs": []`.
 
 **Errors:** `500` `{"error": "Could not fetch clubs: <db error>"}`.
 
-**Status:** ✅ Implemented. This one route covers both the PDF's "list clubs" read and `GET /clubs?verified=true`, which the PDF's original endpoint list wrote as `GET /clubs/verified=true`.
+**Status:** ✅ Implemented. This one route covers both the PDF's "list clubs" read and `GET /clubs?verified=true`, which the PDF's first endpoint list writes as `GET /clubs/verified=true`.
 
 **Known issues:**
 
@@ -117,7 +117,7 @@ Returns one club with its logo key, website, and description. It returns unverif
 | `400` | `{"error": "Club with id <clubId> not found"}` |
 | `500` | `{"error": "Could not fetch club: <db error>"}` |
 
-**Status:** ✅ Implemented. The PDF's revamp added this route as "New".
+**Status:** ✅ Implemented.
 
 **Known issues:**
 

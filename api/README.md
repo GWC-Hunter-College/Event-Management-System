@@ -6,10 +6,11 @@ The HTTP API behind the Hunter College clubs and events site ([Hunter-College-Cl
 Frontend -> API -> Database
 ```
 
-- **What runs today:** Go Lambda handlers behind two API Gateway HTTP APIs, all under [`infrastructure/legacy/`](../infrastructure/legacy/). Nothing has moved into `api/` yet, so this folder is documentation. The plan for moving code here is in [MIGRATION.md](MIGRATION.md).
+- **What this is:** the API's blueprint. It describes how each endpoint is designed to work and how the built ones behave today. Endpoints that aren't built yet are included and marked ⬜.
+- **Implementation:** Go Lambda handlers behind two API Gateway HTTP APIs, in [`infrastructure/legacy/`](../infrastructure/legacy/). The plan for building the provider-independent `api/` module is in [MIGRATION.md](MIGRATION.md).
 - **Base URL:** whatever the frontend's `VITE_API_BASE_URL` points to. That's the API Gateway endpoint each stack prints as its `myHttpApiEndpoint` output: `ClubEventApiDev` (MySQL schema `STAGING`) or `ClubEventApiProd` (schema `PRODUCTION`). There's no custom domain, path prefix, or version prefix; append the paths below as they are.
 - **Format:** request and response bodies are JSON. A few image-route errors are plain text; those endpoints say so.
-- **Source of truth:** the legacy code. A status here never comes from a checkmark in the planning PDF.
+- **Status:** comes from the code, never from a checkmark in the planning PDF. The PDF supplies the design intent for endpoints that aren't built yet.
 
 ```bash
 curl "$VITE_API_BASE_URL/events?startDate=2026-09-01"
@@ -78,21 +79,21 @@ A JWT tells you *who* the caller is. Roles live in MySQL, and a handler only enf
 
 ## Endpoints
 
-Every route registered in [`infrastructure/legacy/gateway/routes/`](../infrastructure/legacy/gateway/routes/), every internal function, and every planned endpoint from the PDF's "Endpoints Revamp" and image-upload flow.
+The whole design: every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/routes/), every internal function, and every endpoint the planning PDF's "Endpoints Revamp" and image-upload flow call for.
 
 | Access | Method | Path | What it does | Status | Docs |
 | --- | --- | --- | --- | --- | --- |
 | **Me** | | | | | |
 | 🔴 | GET | `/me` | Returns the caller's student record. | ✅ | [me.md](endpoints/me.md#-get-me) |
 | 🔴 | GET | `/me/clubs` | Lists the caller's clubs with their role in each. | ✅ | [me.md](endpoints/me.md#-get-meclubs) |
-| 🔴 | GET | `/me/events` | Lists posted events from the caller's clubs (PDF: `/me/clubs/events`). | ✅ | [me.md](endpoints/me.md#-get-meevents) |
+| 🔴 | GET | `/me/events` | Lists posted events from the caller's clubs. | ✅ | [me.md](endpoints/me.md#-get-meevents) |
 | 🔴 | GET | `/me/clubs/eboard` | Lists clubs where the caller is e-board or owner. | ⬜ | [me.md](endpoints/me.md#-get-meclubseboard) |
 | **Clubs** | | | | | |
 | 🟢 | GET | `/clubs` | Lists clubs; `?verified=true` returns only verified ones. | ✅ | [clubs.md](endpoints/clubs.md#-get-clubs) |
 | 🔴 | POST | `/clubs` | Creates a club (with no owner). | ✅ | [clubs.md](endpoints/clubs.md#-post-clubs) |
 | 🟢 | GET | `/clubs/{clubId}` | Returns one club, including unverified ones. | ✅ | [clubs.md](endpoints/clubs.md#-get-clubsclubid) |
 | **Memberships** | | | | | |
-| 🔴 | POST | `/clubs/{clubId}/members/me` | Joins the caller to a club (PDF: `POST /clubs/{clubId}/members`). | ✅ | [memberships.md](endpoints/memberships.md#-post-clubsclubidmembersme) |
+| 🔴 | POST | `/clubs/{clubId}/members/me` | Joins the caller to a club. | ✅ | [memberships.md](endpoints/memberships.md#-post-clubsclubidmembersme) |
 | 🟢 | DELETE | `/clubs/{clubId}/members/me` | Leaves a club. Broken: the route has no authorizer. | 🟨 | [memberships.md](endpoints/memberships.md#-delete-clubsclubidmembersme) |
 | 🔴 | GET | `/clubs/{clubId}/members` | Lists a club's members, for its e-board and owners. | ⬜ | [memberships.md](endpoints/memberships.md#-get-clubsclubidmembers) |
 | 🔴 | GET | `/clubs/{clubId}/eboard` | Lists a club's e-board and owners. | ⬜ | [memberships.md](endpoints/memberships.md#-get-clubsclubideboard) |
@@ -113,7 +114,7 @@ Every route registered in [`infrastructure/legacy/gateway/routes/`](../infrastru
 | 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
 | 🔴 | DELETE | `/auth/events/{eventId}` | Archives an event. | ⬜ | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
 | **Images** | | | | | |
-| 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo (PDF: `/clubs/thumbnails`). | ✅ | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
+| 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
 | 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
 | 🟢 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails` | Presigned S3 upload URL for an event thumbnail. | ✅ | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnails) |
 | 🔴 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails/confirm` | Attaches an uploaded thumbnail to its event. | ⬜ | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm) |
@@ -130,12 +131,12 @@ Every route registered in [`infrastructure/legacy/gateway/routes/`](../infrastru
 | 🔴 | POST | `/clubs/{clubId}/verification` | Marks a club verified. | ⬜ | [verification.md](endpoints/verification.md#-post-clubsclubidverification) |
 | 🔴 | DELETE | `/clubs/{clubId}/verification` | Removes a club's verification. | ⬜ | [verification.md](endpoints/verification.md#-delete-clubsclubidverification) |
 | **Internal** | | | | | |
-| 🔵 | trigger | Cognito sign-up and sign-in | Upserts the student row from `sub` and `email` (PDF: "Register Lambda"). | ✅ | [internal.md](endpoints/internal.md#-cognito-student-sync-trigger) |
+| 🔵 | trigger | Cognito sign-up and sign-in | Upserts the student row from `sub` and `email`. | ✅ | [internal.md](endpoints/internal.md#-cognito-student-sync-trigger) |
 | 🔵 | function | `RequireStudent` | Creates the caller's student row on first request if it's missing. | ✅ | [internal.md](endpoints/internal.md#-requirestudent-request-time-student-sync) |
 | 🔵 | function | Club role check | Is the caller e-board or owner of a club? No handler calls it yet. | 🟨 | [internal.md](endpoints/internal.md#-club-role-check) |
 | 🔵 | function | Event role check | Is the caller e-board or owner of a club linked to an event? No handler calls it yet. | 🟨 | [internal.md](endpoints/internal.md#-event-role-check) |
 | 🔵 | function | Admin check | Is the caller an admin? | ⬜ | [internal.md](endpoints/internal.md#-admin-check) |
-| 🔵 | function | Image metadata write | Stores image metadata after an upload (PDF: internal `POST /images`). | ⬜ | [internal.md](endpoints/internal.md#-image-metadata-write-pdf-post-images) |
+| 🔵 | function | Image metadata write | Stores image metadata after an upload. | ⬜ | [internal.md](endpoints/internal.md#-image-metadata-write-pdf-post-images) |
 | **Operational** | | | | | |
 | 🟢 | GET | `/health` | Liveness check; returns a fixed greeting. | ✅ | [operational.md](endpoints/operational.md#-get-health) |
 | 🟢 | GET | `/database/test` | Database connectivity check. Dormant: neither API registers it. | 🟨 | [operational.md](endpoints/operational.md#-get-databasetest) |
@@ -144,21 +145,22 @@ Every route registered in [`infrastructure/legacy/gateway/routes/`](../infrastru
 
 **Preflight routes:** `POST /clubs/{clubId}/events/{eventId}/thumbnails`, `.../images`, and `.../images/confirm` also register `OPTIONS` against the same Lambda for CORS preflight. Those aren't separate endpoints.
 
-### PDF names that changed
+### Names in the planning PDF
 
-Where the PDF and the code disagree on a path, these docs use the code's path. If you're working from the PDF:
+The planning PDF names some endpoints differently. These docs use the paths in the code; if you're reading the PDF, look here:
 
-| PDF path | Where to look |
+| In the PDF | Where to look |
 | --- | --- |
+| Register Lambda | [Cognito student sync trigger](endpoints/internal.md#-cognito-student-sync-trigger) |
 | `GET /me/clubs/events` | [`GET /me/events`](endpoints/me.md#-get-meevents) |
 | `POST /clubs/{clubId}/members` | [`POST /clubs/{clubId}/members/me`](endpoints/memberships.md#-post-clubsclubidmembersme) (self-join only) |
 | `POST /clubs/thumbnails?filetype=&filename=` | [`POST /clubs/{clubId}/thumbnails`](endpoints/images.md#-post-clubsclubidthumbnails) (JSON body) |
 | `GET /clubs/verified=true` | [`GET /clubs?verified=true`](endpoints/clubs.md#-get-clubs) |
-| `GET /events/{eventId}/description`, `GET /events/{eventId}/clubs` | Merged into [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) |
-| `GET`, `PATCH`, `DELETE /clubs/{clubId}/events/{eventId}` and its `/images` and `/thumbnails` (original list) | Planned as [`/auth/events/{eventId}`](endpoints/event-management.md); the built media routes stay [club-scoped](endpoints/images.md) |
+| `GET /events/{eventId}/description`, `GET /events/{eventId}/clubs` | Covered by [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) |
+| `GET`, `PATCH`, `DELETE /clubs/{clubId}/events/{eventId}` and its `/images` and `/thumbnails` (the PDF's first endpoint list) | Designed as [`/auth/events/{eventId}`](endpoints/event-management.md); the built media routes are [club-scoped](endpoints/images.md) |
 | Internal `POST /images` | [Image metadata write](endpoints/internal.md#-image-metadata-write-pdf-post-images) (internal function, not a route) |
 
-The full history, including the 35-item "Endpoints Revamp" checklist, is in [MIGRATION.md](MIGRATION.md#historical-to-current-route-changes).
+An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code is in [MIGRATION.md](MIGRATION.md#design-doc-vs-code).
 
 ## Open questions
 
@@ -172,7 +174,6 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 - Who may verify and unverify clubs? The PDF only marks those routes protected; the admins stub note says admins do it.
 - Should unverified clubs stay publicly readable through `GET /clubs/{clubId}` (current behavior), or be admin-only with a verified badge (a PDF p. 50 suggestion)?
 - Which token should clients send? The handlers read `email` from the token, but the access token the frontend sends has none.
-- The leave-club route is missing its authorizer. Fixing it is a CDK change, deliberately not made during docs work; when does it happen?
 
 **Events**
 
@@ -187,12 +188,12 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 - Image rules: who may upload, confirm, and delete; content checks; verifying the S3 object exists; one transaction per confirm; replacing old images; and recovering from failed deletes. Should the club-logo signer return `imageId` and `objectKey` like the others (and the PDF)?
 - Should reads return usable image URLs instead of S3 object keys in `thumbnailUrl`?
 
-**Contracts and parity**
+**Contracts**
 
-- Migration parity: keep today's quirks (`400` for not-found, joined-row paging, unordered lists, empty club names, placeholder thumbnails) for strict parity, or fix them in a versioned contract? The frontend already expects `404` and `403` in several places.
-- `students.email` is nullable, but the Go model isn't. Keep the current `GET /me` contract, or change it in a separately reviewed migration?
+- Should the API keep today's quirks (`400` for not-found, joined-row paging, unordered lists, empty club names, placeholder thumbnails), or fix them in a versioned contract? The frontend already expects `404` and `403` in several places.
+- `students.email` is nullable, but the Go model isn't. Should `GET /me` allow a `null` email?
 - Should `/health` be split into liveness and readiness checks?
-- Does any client still need old PDF paths such as `/me/clubs/events`? Add aliases only if a compatibility need is approved.
+- Should the PDF's paths, such as `/me/clubs/events`, exist as aliases? Only if a client needs them.
 
 **Infrastructure**
 
@@ -201,7 +202,7 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 
 ## More docs
 
-- [MIGRATION.md](MIGRATION.md): evidence rules, planned `api/` layout, historical route changes, per-endpoint targets, and migration order.
+- [MIGRATION.md](MIGRATION.md): the build plan for the `api/` module: target layout, where each endpoint's code will live, build order, and how the planning PDF maps to the code.
 - [database/README.md](../database/README.md): schema and the 29 query groups the endpoints link to.
-- [Legacy API reference](../infrastructure/legacy/docs/api/README.md) and [architecture docs](../infrastructure/legacy/docs/architecture/): the deployed stacks, authentication, and image uploads in more depth.
+- [Implementation reference](../infrastructure/legacy/docs/api/README.md) and [architecture docs](../infrastructure/legacy/docs/architecture/): the deployed stacks, authentication, and image uploads in more depth.
 - The frontend's [`docs/api.md`](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend/blob/staging/docs/api.md): what the frontend expects from each endpoint. It differs from the backend in places; each endpoint's known issues say where.

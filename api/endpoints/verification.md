@@ -6,6 +6,8 @@ Verified clubs are the ones the public club directory shows. The `verified_clubs
 
 **Who may verify:** the PDF's verification section only marks these routes protected (🔴). The admin requirement comes from the stub note in [`stub/lambda/admins/admins.txt`](../../infrastructure/legacy/stub/lambda/admins/admins.txt), which says admins verify clubs. This is an [open question](../README.md#open-questions).
 
+**Need: Later.** The frontend has no admin page or admin UI, so nothing calls these routes yet; see [coverage.md](../coverage.md#admin). When an admin page exists, it can check [`isAdmin` on `GET /me`](me.md#-get-me) (Proposed) before showing itself.
+
 ## 🔴 POST `/clubs/{clubId}/verification`
 
 Marks a club verified by inserting it into `verified_clubs` (PDF).

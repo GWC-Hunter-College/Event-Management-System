@@ -80,6 +80,20 @@ Both fields are required and non-empty.
 - There's no confirm route, so an upload never sets `clubs.fk_logo_id` and never appears in club reads.
 - The `GET /clubs/{clubId}/thumbnails` registration is commented out.
 
+**Proposed changes** (Need: **Now**; screen: New club form logo dropzone, called after `POST /clubs` returns the `clubId`). Fixes [M7](../coverage.md#m7-the-club-logo-signer-returns-key-not-imageid-and-objectkey).
+
+- **Auth:** 🔴 JWT + owner or e-board of `clubId`; `404` for an unknown club.
+- **Request body:** unchanged, `{ "filename", "mimetype" }`.
+- **Response `200`:** the same shape as the event signers:
+
+  ```json
+  {
+    "uploadUrl": "<one-minute-signed-put-url>",
+    "imageId": "11111111-2222-3333-4444-555555555555",
+    "objectKey": "clubs/7/thumbnails/11111111-2222-3333-4444-555555555555.png"
+  }
+  ```
+
 **Code:** route [`club_image_routes.go`](../../infrastructure/legacy/gateway/routes/club_image_routes.go) · handler [`clubs/thumbnails/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/thumbnails/post/post.go)
 
 ## 🔴 POST `/clubs/{clubId}/thumbnails/confirm`
@@ -95,6 +109,13 @@ Saves an uploaded club logo: records the image metadata and points `clubs.fk_log
 **Status:** ⬜ Not built. No route, handler, query transaction, or S3 existence check.
 
 **Notes:** the designed behavior is to create or reuse the image row, update `clubs.fk_logo_id`, and clean up a replaced logo, atomically where possible.
+
+**Proposed contract** (Need: **Now**; screen: New club form logo dropzone; later an edit-club screen).
+
+- **Auth:** 🔴 JWT + owner or e-board of `clubId`.
+- **Request body:** `{ "filename", "mimetype", "imageId", "objectKey" }`, the values the signer returned. `objectKey` must start with `clubs/{clubId}/thumbnails/`, and the object must exist in storage.
+- **Response `200`:** `{ "message": "Logo saved", "clubId": 7, "thumbnailUrl": "<readable-logo-url>" }`, so the page can show the logo without re-reading the club.
+- **Errors:** `400` bad body, key outside the club's prefix, or missing object; `401`; `403`; `404` unknown club; `500`.
 
 **Plan:** PDF upload guide, p. 25 · [query group 27](../../database/README.md#27-club-and-event-thumbnail-metadata-assignment)
 
@@ -126,6 +147,8 @@ Returns a presigned S3 PUT URL for an event thumbnail. Its protected version in 
 
 - There's no confirm route, so nothing sets `events.fk_thumbnail_id` and the returned `imageId` and `objectKey` go unused.
 
+**Proposed changes** (Need: **Now**; screen: New event form flyer dropzone): add the Cognito authorizer and the event role check, or replace this route with [`POST /auth/events/{eventId}/thumbnails`](event-management.md#-post-autheventseventidthumbnails). Request and response stay as they are.
+
 **Code:** route [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go) (`POST` and `OPTIONS`) · handler [`clubs/events/thumbnails/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/events/thumbnails/post/post.go)
 
 ## 🔴 POST `/clubs/{clubId}/events/{eventId}/thumbnails/confirm`
@@ -139,6 +162,14 @@ Saves an uploaded event thumbnail by pointing `events.fk_thumbnail_id` at it (st
 **Response:** not defined.
 
 **Status:** ⬜ Not built. No route, handler, query transaction, or S3 existence check.
+
+**Proposed contract** (Need: **Now**; screen: New event form flyer dropzone and alt text). Its `/auth/events/{eventId}/thumbnails/confirm` equivalent has the same contract if the protected routes move there ([open question](../README.md#open-questions)).
+
+- **Auth:** 🔴 JWT + e-board or owner of any club linked to the event.
+- **Request body:** `{ "filename", "mimetype", "imageId", "objectKey", "altText" }`. `altText` is optional; the rest are the signer's values. `objectKey` must start with `events/{eventId}/thumbnails/`, and the object must exist in storage.
+- **Response `200`:** `{ "message": "Flyer saved", "eventId": 42, "thumbnailUrl": "<readable-flyer-url>" }`.
+- **Errors:** `400`, `401`, `403`, `404` unknown event, `500`.
+- **Writes:** the `images` row, `events.fk_thumbnail_id`, and the alt text ([schema needs](../coverage.md#schema-needs)), in one transaction.
 
 **Plan:** PDF upload guide, p. 26 · [query group 27](../../database/README.md#27-club-and-event-thumbnail-metadata-assignment)
 
@@ -207,6 +238,7 @@ All four fields are required, non-empty, and stored as sent.
 **Known issues:**
 
 - Trusts client-supplied IDs, keys, and MIME types, and doesn't check that the S3 object exists or belongs to the event.
+- **Need: Later.** No screen uploads gallery images yet ("More photos" is SOON).
 - The two inserts commit separately, so a failed link leaves an orphan `images` row.
 
 **Code:** route [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go) (`POST` and `OPTIONS`) · handler [`clubs/events/images/confirm/post.go`](../../infrastructure/legacy/lambda/api/clubs/events/images/confirm/post.go) · SQL [`images/INSERT_image.sql`](../../infrastructure/legacy/utils/query_client/queries/images/INSERT_image.sql) and [`images/INSERT_event_image.sql`](../../infrastructure/legacy/utils/query_client/queries/images/INSERT_event_image.sql) · [query group 15](../../database/README.md#15-event-image-metadata-confirmation)
@@ -240,6 +272,7 @@ Lists an event's gallery images with one-minute signed GET URLs. **It's broken:*
 **Known issues:**
 
 - Like the confirm route, it closes its shared database connection after each request (`defer queryClient.Conn.Close()`).
+- **Need: Later.** The Event page reads gallery URLs from the event object's `images` ([proposed event object](events.md#proposed-event-object)), not from this route.
 - The design splits this route into public reads of posted events at [`GET /events/{eventId}/images`](events.md#-get-eventseventidimages) and manager reads at [`GET /auth/events/{eventId}/images`](event-management.md#-get-autheventseventidimages).
 
 **Code:** route [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go) · handler [`clubs/events/images/get/get.go`](../../infrastructure/legacy/lambda/api/clubs/events/images/get/get.go) · [query group 16](../../database/README.md#16-event-image-list)

@@ -38,6 +38,8 @@ Joins the caller to a club as a regular member. The frontend's Club page calls i
 - The frontend's `docs/api.md` expects `404` for a missing club; the backend returns `400`.
 - Deploy risk: both API stacks declare this Lambda with the same fixed name, `PostJoinClubMemberMe`, so they can't both deploy it in one account and region. The repo doesn't show which API serves the route today.
 
+**Proposed changes** (Need: **Now**; screen: Club page "+ JOIN CLUB"): `404` for a missing club and `409` for an existing membership, instead of `400` for both ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)). Request and `200` response unchanged; the frontend only checks `res.ok` and then re-reads `GET /me/clubs`.
+
 **PDF path:** the planning PDF writes this route as `POST /clubs/{clubId}/members` ("join a club as a member"). By design it's self-join only; no endpoint adds a different student ([query group 19](../../database/README.md#19-add-a-specified-club-member)).
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/members/me/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go) · SQL [`clubs/INSERT_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_member.sql) · [query group 8](../../database/README.md#8-join-caller-to-club)
@@ -77,17 +79,41 @@ Leaves a club as the caller; an owner can't leave. The frontend's Club page call
 - The frontend expects `401`, `403` (owner), and `404` (not a member); the handler uses `400` for all of them.
 - Same deploy risk as joining: both API stacks declare the fixed Lambda name `DeleteClubMemberMe`.
 
+**Proposed changes** (Need: **Now**; screen: Club page "Leave club" in the JOINED menu, after the confirm modal):
+
+- **Auth:** 🔴 JWT: add the Cognito authorizer to the route. Allow `DELETE` in the dev API's CORS config.
+- **Response `200`:** unchanged, `{"message": "Successfully left club", "clubId": 7, "left": true}`.
+- **Errors:** `401` no token (API Gateway), `403` the caller owns the club, `404` the caller isn't a member or the club doesn't exist, `500` ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)). Treat a `NULL` owner flag as not-owner.
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) (no `Authorizer` on this registration) · handler [`clubs/clubId/members/me/delete/delete.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go) · SQL [`clubs/DELETE_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/DELETE_club_member.sql) · [query group 9](../../database/README.md#9-leave-callers-club)
 
 ## 🔴 GET `/clubs/{clubId}/members`
 
-Lists a club's members from `club_members`, paginated if needed (PDF). The frontend's Board tab ("The club board is coming soon") is waiting on this.
+Lists a club's members from `club_members`, paginated if needed (PDF). No frontend screen lists members yet: the Club page's Manage tab lists events only, and its Board tab is a planned photo-and-notes wall, not a member list.
 
 **Auth:** 🔴 JWT + e-board or owner of the club (PDF), using the [club role check](internal.md#-club-role-check).
 
 **Path params:** `clubId`. Pagination isn't defined.
 
 **Response:** not defined. Still open: which fields to return, how to paginate, and whether ordinary members may see any of it.
+
+**Proposed contract** (Need: **Later**; screen: a member list in the Club page's Manage tab, not built):
+
+- **Query params:** `role` (optional: `member`, `eboard`, or `owner`), `limit`, `page`.
+- **Response `200`:**
+
+  ```json
+  {
+    "message": "Succesfully fetched 2 members",
+    "members": [
+      { "studentId": "11111111-2222-3333-4444-555555555555", "email": "student@example.edu", "firstName": "Ada", "lastName": "L.", "role": "owner" },
+      { "studentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "email": null, "firstName": null, "lastName": null, "role": "member" }
+    ]
+  }
+  ```
+
+  `role` uses the same owner-over-e-board-over-member precedence as [`GET /me/clubs`](me.md#-get-meclubs). Names come from `student_info`, which nothing writes yet, so they're usually `null`. Whether e-board members may see emails is [open](../README.md#open-questions).
+- **Errors:** `401`, `403` not e-board or owner, `404` unknown club.
 
 **Status:** ⬜ Not built. There's only placeholder text in [`stub/lambda/clubs/clubId/members/`](../../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
 
@@ -103,6 +129,8 @@ Lists a club's e-board members and owners (PDF). The PDF itself asks whether thi
 
 **Response:** not defined. A role filter on the members list would avoid a second copy of the member-list SQL.
 
+**Proposed** (Need: **Later**; no screen lists the e-board yet): serve this as [`GET /clubs/{clubId}/members?role=eboard`](#-get-clubsclubidmembers), returning e-board members and owners, rather than a separate route. If the route is kept for the PDF's sake, it returns the same `members` shape.
+
 **Status:** ⬜ Not built. No route, handler, or query; only placeholder material.
 
 **Plan:** PDF "Endpoints Revamp", p. 16 · [query group 18](../../database/README.md#18-club-member-and-e-board-listing)
@@ -113,7 +141,13 @@ Promotes a member to e-board or owner, or demotes them (PDF: `?is_eboard=<TRUE|F
 
 **Auth:** 🔴 JWT + **owner only** (PDF: "ONLY OWNERS CAN PROMOTE MEMBERS TO EBOARD OR OWNERS", with one query to check ownership and another to update). The existing [club role check](internal.md#-club-role-check) accepts e-board *or* owner, so it isn't enough on its own.
 
-**Params (PDF):** path `clubId`; query `is_eboard` and `is_owner`. Nothing in the PDF's parameters says *which* member to change; that contract still needs defining.
+**Params (PDF):** path `clubId`; query `is_eboard` and `is_owner`. Nothing in the PDF's parameters says *which* member to change.
+
+**Proposed contract** (Need: **Later**; screen: promote and demote controls in the Manage tab, not built). Names the member in the body, and uses one role value instead of two flags, so a member can't end up both owner and e-board by accident:
+
+- **Request body:** `{ "studentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "role": "eboard" }`, where `role` is `member`, `eboard`, or `owner`.
+- **Response `200`:** `{"message": "Updated role", "clubId": 7, "studentId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "role": "eboard"}`.
+- **Errors:** `400` bad role, `401`, `403` caller isn't an owner, `404` the student isn't a member, `409` the change would leave the club with no owner.
 
 **Response:** not defined.
 

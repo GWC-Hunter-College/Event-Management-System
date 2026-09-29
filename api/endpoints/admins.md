@@ -6,6 +6,8 @@ The PDF shows ✅ next to two of these routes. Those marks tracked task progress
 
 Student IDs are Cognito `sub` UUID strings (`students.id` is `CHAR(36)`).
 
+**Need: Later.** The frontend has no admin page or admin UI, so nothing calls these routes yet; see [coverage.md](../coverage.md#admin). When an admin page exists, it can check [`isAdmin` on `GET /me`](me.md#-get-me) (Proposed) before showing itself.
+
 ## 🔴 GET `/admins`
 
 Lists admins, "their id and clubs" (PDF).

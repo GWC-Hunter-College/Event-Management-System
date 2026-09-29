@@ -45,6 +45,21 @@ Returns the caller's student record. No frontend page calls it; the frontend rea
 
 - `students.email` is nullable, but `models.Student.Email` is a Go `string`. A row with a `NULL` email fails to scan, and this route returns `500`. `RequireStudent` creates exactly that kind of row when the token has no `email` claim (true of the access tokens the frontend sends; see [Auth](../README.md#auth)) and the Cognito trigger hadn't already written the row.
 
+**Proposed changes** (Need: **Later**; no screen calls this route: the user menu reads the email from the ID token, and there's no admin page). Fixes [M5](../coverage.md#m5-the-access-token-has-no-email-claim) and gives a future admin page what it needs:
+
+```json
+{
+  "message": "Successfully fetched student 11111111-2222-3333-4444-555555555555",
+  "student": {
+    "id": "11111111-2222-3333-4444-555555555555",
+    "email": null,
+    "isAdmin": false
+  }
+}
+```
+
+`email` may be `null`. `isAdmin` (new) is `true` when the caller has an `admins` row, so an admin page can decide whether to show itself without calling an admin-only route and handling `403`.
+
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/get.go`](../../infrastructure/legacy/lambda/api/me/get.go) · SQL [`students/SELECT_student_by_sub.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_by_sub.sql) · query groups [1](../../database/README.md#1-student-existence-and-upsert) and [2](../../database/README.md#2-current-student)
 
 ## 🔴 GET `/me/clubs`
@@ -82,6 +97,8 @@ Lists every club the caller has joined, with the caller's role in each. The fron
 - `thumbnailUrl` holds the logo's S3 object key, not a signed or public URL. It's omitted when the club has no logo.
 - The schema doesn't make the two role flags mutually exclusive; `owner` wins.
 
+**Proposed changes** (Need: **Now**; screens: My Clubs cards, and every page that derives the viewer's role): `thumbnailUrl` becomes a readable URL ([proposed club object](clubs.md#proposed-club-object)). `role` and the envelope are unchanged.
+
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/clubs/get.go`](../../infrastructure/legacy/lambda/api/me/clubs/get.go) · SQL [`students/SELECT_student_clubs.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_clubs.sql) · [query group 3](../../database/README.md#3-current-students-clubs-and-roles)
 
 ## 🔴 GET `/me/events`
@@ -110,6 +127,8 @@ Lists posted events linked to any club the caller has joined. The frontend's My 
 - Each event lists only the clubs the caller joined. If the caller joined an associate club but not the owner club, `owners.owner` is the empty object.
 - Has the shared [event list quirks](events.md#event-object): joined-row paging and unordered output.
 
+**Proposed changes** (Need: **Now**; screen: My Clubs stat cards and agenda): return the [proposed event object](events.md#proposed-event-object), including `cancelled` events, with every linked club (not only the ones the caller joined), paged by event in start-date order.
+
 **PDF path:** the planning PDF writes this route as `GET /me/clubs/events?startDate=&endDate=`. A stub for that path exists only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go), with a hard-coded handler ([`stub/lambda/me/clubs/events/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/events/get.go)) and stale SQL ([`GET_me_clubs_events.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql)). This route is the one implementation; add an alias for the PDF path only if a client needs it.
 
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/events/get.go`](../../infrastructure/legacy/lambda/api/me/events/get.go) · SQL [`students/SELECT_student_events.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_events.sql) · [query group 4](../../database/README.md#4-current-students-events)
@@ -123,6 +142,8 @@ Lists the clubs where the caller is e-board or owner (PDF). Until it exists, the
 **Request:** none planned. A PDF note suggests the path might be `{me_id}/clubs/eboard` instead.
 
 **Response:** not defined. It could reuse `GET /me/clubs` with a role filter ([query group 17](../../database/README.md#17-my-e-board-clubs)).
+
+**Need:** none. The frontend filters `GET /me/clubs` by `role` itself.
 
 **Status:** ⬜ Not built. Only an inactive, hard-coded stub ([`stub/lambda/me/clubs/eboard/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/eboard/get.go)) and stale SQL ([`eboard.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/eboard/eboard.sql)) exist. That SQL has an `AND`/`OR` precedence bug and selects student IDs instead of clubs, so treat it as design notes, not working SQL.
 

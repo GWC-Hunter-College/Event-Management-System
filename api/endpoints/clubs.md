@@ -6,6 +6,33 @@ Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/
 
 **Club object:** list responses return `id`, `name`, and `thumbnailUrl`. The detail response adds `website_url` and `description`, in snake_case while the other keys are camelCase. `thumbnailUrl` is the logo's S3 object key, not a URL, and it's omitted when the club has no logo.
 
+## Proposed club object
+
+**Proposed.** Need: **Now**. What club reads would return so the Clubs, Club, My Clubs, and Event pages show everything they already have UI for. It keeps `thumbnailUrl`, which the frontend's `fromJsonClub` already maps to its `logo`. Fixes [M6](../coverage.md#m6-no-usable-image-urls) and [M13](../coverage.md#m13-club-fields-description-tags-member-count-logo).
+
+```json
+{
+  "id": 7,
+  "name": "Example Club",
+  "thumbnailUrl": "<readable-logo-url>",
+  "description": "A sanitized example club.",
+  "tags": ["TECHNOLOGY", "COMMUNITY"],
+  "memberCount": 41,
+  "verified": true
+}
+```
+
+| Field | Returned by | Notes |
+| --- | --- | --- |
+| `id`, `name` | Every club read | Unchanged. |
+| `thumbnailUrl` | Every club read | A readable URL instead of the S3 key; absent when there's no logo. |
+| `description` | `GET /clubs`, `GET /clubs/{clubId}` | Newly in the list: club cards show it. `null` when unset. |
+| `tags` | `GET /clubs`, `GET /clubs/{clubId}` | New. Topic strings as the New club form sends them (up to three from its fixed list); `[]` when none. Needs a `club_tags` table ([schema needs](../coverage.md#schema-needs)). |
+| `memberCount` | `GET /clubs`, `GET /clubs/{clubId}` | New. Count of `club_members` rows. The frontend hides the count when it's absent, so it can ship later than the rest. |
+| `verified` | `GET /clubs/{clubId}` | New. Lets a club page show whether it's listed; no current screen needs it, so it's optional. |
+| `website_url` | `GET /clubs/{clubId}` | Unchanged (snake_case). No screen shows it. |
+| `role` | `GET /me/clubs` only | Unchanged. |
+
 ## 🟢 GET `/clubs`
 
 Lists clubs; with `?verified=true`, only clubs in `verified_clubs`. The frontend calls `GET /clubs?verified=true` from the Clubs page (`/clubs`), and from Home and Events to look up host club names, because event responses leave club names empty.
@@ -38,6 +65,9 @@ No clubs returns `200` with `"clubs": []`.
 **Known issues:**
 
 - `thumbnailUrl` is an S3 object key, not a URL; the frontend maps it straight to its `logo` field.
+- The Clubs page's cards show description, topic tags, and member count, none of which the list returns.
+
+**Proposed changes** (Need: **Now**; screens: Clubs; host-club lookups on Home and Events until [M8](../coverage.md#m8-event-objects-have-empty-club-names) is fixed): return the [proposed club object](#proposed-club-object) in the same `{"message", "clubs"}` envelope. Access stays 🟢 and `verified` works as today.
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/get.go`](../../infrastructure/legacy/lambda/api/clubs/get.go) · SQL [`clubs/SELECT_clubs.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_clubs.sql) · [query group 5](../../database/README.md#5-club-list-and-verified-filter)
 
@@ -83,6 +113,23 @@ Creates a club and its `club_info` row in one transaction (`ExecInsertQuery`). T
 - New clubs aren't verified, so they don't appear in `GET /clubs?verified=true`.
 - The frontend also sends `logo` (a `blob:` URL in design mode) and `tags`; the handler ignores both.
 
+**Proposed contract** (Need: **Now**; screen: New club form). Fixes [M4](../coverage.md#m4-the-creator-doesnt-become-the-clubs-owner) and [M13](../coverage.md#m13-club-fields-description-tags-member-count-logo).
+
+- **Auth:** 🔴 JWT. Whether it also needs an admin is [open](../README.md#open-questions).
+- **Request body:**
+
+  ```json
+  {
+    "club": { "name": "Example Club", "description": "A sanitized example club.", "website_url": "https://club.example.edu" },
+    "tags": ["TECHNOLOGY", "COMMUNITY"]
+  }
+  ```
+
+  `tags` is optional, at most three, each non-empty. `logo` isn't accepted: the form uploads it after creation through the [logo flow](images.md#how-image-uploads-work).
+- **Response `200`:** unchanged, `{"message": "Successfully inserted club into database", "clubId": 7}`.
+- **Writes:** `clubs`, `club_info`, the tags, and an owner membership for the caller (`member_is_owner = TRUE`), in one transaction.
+- **Errors:** as today, plus `409` for a duplicate name instead of `500`.
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/post/post.go) · SQL [`clubs/INSERT_club.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club.sql) and [`clubs/INSERT_club_info.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_info.sql) · [query group 7](../../database/README.md#7-club-creation)
 
 ## 🟢 GET `/clubs/{clubId}`
@@ -122,5 +169,24 @@ Returns one club with its logo key, website, and description. It returns unverif
 **Known issues:**
 
 - A missing club returns `400`, not `404`. The frontend's `docs/api.md` expects `404`.
+- `clubId` isn't checked as an integer.
+
+**Proposed changes** (Need: **Now**; screens: Club page header, Event page host, New event form chip; later the GWC website): return the [proposed club object](#proposed-club-object) under `club`; `404` `{"error": "Club with id <clubId> not found"}` for a missing club and `400` for a non-integer `clubId` ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)). Access stays 🟢; unverified clubs stay readable.
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/get.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/get.go) · SQL [`clubs/SELECT_club.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club.sql) · [query group 6](../../database/README.md#6-club-detail)
+
+## 🔴 PATCH `/clubs/{clubId}`
+
+Updates a club's name, description, website, or tags. **Proposed**; not in the planning PDF. Need: **Later**: no screen edits a club yet (logo changes go through the [logo upload flow](images.md#how-image-uploads-work)).
+
+**Auth:** 🔴 JWT + owner of the club. Whether e-board members may edit too is [open](../README.md#open-questions).
+
+**Path params:** `clubId`, an integer.
+
+**Request body (Proposed):** any subset of `{ "club": { "name", "description", "website_url" }, "tags": [] }`; omitted fields are unchanged, and `tags` replaces the list.
+
+**Response `200` (Proposed):** `{"message": "Successfully updated club 7", "club": { /* proposed club object */ }}`.
+
+**Errors (Proposed):** `400` validation, `401`, `403` not an owner, `404` unknown club, `409` duplicate name, `500`.
+
+**Status:** ⬜ Not built. No route, handler, or update query.

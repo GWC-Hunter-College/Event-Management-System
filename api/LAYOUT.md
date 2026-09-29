@@ -35,6 +35,7 @@ api/
 │   ├── create/
 │   └── {clubId}/
 │       ├── get/
+│       ├── update/
 │       ├── members/
 │       │   ├── list/
 │       │   ├── join/
@@ -117,6 +118,7 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`GET /clubs`](endpoints/clubs.md#-get-clubs) | `api/clubs/list/` | `database/queries/clubs/list/` | Yes, after extracting the HTTP and database adapters. |
 | [`POST /clubs`](endpoints/clubs.md#-post-clubs) | `api/clubs/create/` | `database/queries/clubs/create/` | Yes, after extracting the HTTP/JWT and database adapters. |
 | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | `api/clubs/{clubId}/get/` | `database/queries/clubs/get/` | Yes, after extracting the HTTP and database adapters. |
+| [`PATCH /clubs/{clubId}`](endpoints/clubs.md#-patch-clubsclubid) | `api/clubs/{clubId}/update/` | No query group yet ([schema needs](coverage.md#schema-needs)). | N/A until built. |
 | [`POST /clubs/{clubId}/members/me`](endpoints/memberships.md#-post-clubsclubidmembersme) | `api/clubs/{clubId}/members/join/` | `database/queries/clubs/members/create/`, or a caller-specific wrapper under `join/`. | Yes, after extracting the HTTP/JWT and database adapters. |
 | [`DELETE /clubs/{clubId}/members/me`](endpoints/memberships.md#-delete-clubsclubidmembersme) | `api/clubs/{clubId}/members/leave/` | `database/queries/clubs/members/leave/` | Partial; the handler and query logic are reusable once the route's authorizer is fixed. |
 | [`GET /clubs/{clubId}/members`](endpoints/memberships.md#-get-clubsclubidmembers) | `api/clubs/{clubId}/members/list/` | `database/queries/clubs/members/list/` | N/A until built. |
@@ -217,6 +219,7 @@ The product and design decisions that block these steps are listed under [Open q
 - [`api/endpoints/`](endpoints/): the per-resource endpoint reference.
 - `api/LAYOUT.md`: this module layout.
 - [`api/pdf-coverage.md`](pdf-coverage.md): the planning PDF compared with the code.
+- [`api/coverage.md`](coverage.md): the frontend's screens mapped to endpoints.
 - `api/`: no module code yet.
 - [`infrastructure/legacy/lambda/api/`](../infrastructure/legacy/lambda/api/): the current handler source.
 - [`infrastructure/legacy/gateway/`](../infrastructure/legacy/gateway/): the current API Gateway route and integration source.

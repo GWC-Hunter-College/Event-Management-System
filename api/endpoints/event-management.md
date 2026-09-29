@@ -24,9 +24,18 @@ Returns an event in any status (drafted, posted, and so on) with its description
 
 **Path params:** `eventId`.
 
-**Response:** not defined. **Proposed:** start from the public [event object](events.md#event-object).
+**Response:** not defined.
 
 **Status:** ⬜ Not built. The public read and the event role check both exist but aren't combined into a route.
+
+**Proposed contract** (Need: **Now**; screens: New event form `?draft=:eventId` prefill, and the edit form behind "EDIT EVENT" and the Manage tab's "EDIT"). Fixes the prefill half of [M1](../coverage.md#m1-drafts-in-public-lists).
+
+- **Auth:** 🔴 JWT + e-board or owner of any linked club. `403` otherwise; `404` for an unknown event.
+- **Response `200`:** the same envelope as the public read, with a [proposed event object](events.md#proposed-event-object) in any [status](events.md#event-status), including `draft` and `archived`:
+
+  ```jsonc
+  { "message": "Succesfully fetched event 42", "event": { /* event object */ } }
+  ```
 
 **Open:** which statuses managers may see, and whether an event's author gets any rights of their own.
 
@@ -44,11 +53,13 @@ Returns an event's images, including for drafts (PDF: "JWT so u can use on draft
 
 **Status:** ⬜ Not built. The public club-scoped read ([`clubs/events/images/get/get.go`](../../infrastructure/legacy/lambda/api/clubs/events/images/get/get.go)) is missing its SQL, has no role check, and ignores `{clubId}`, so don't copy it for this route.
 
+**Need: Later.** No screen manages gallery images yet; managers see images through `images` in [`GET /auth/events/{eventId}`](#-get-autheventseventid).
+
 **Plan:** PDF "Endpoints Revamp", p. 18 · query groups [16](../../database/README.md#16-event-image-list) and [14](../../database/README.md#14-event-authorization)
 
 ## 🔴 PATCH `/auth/events/{eventId}`
 
-Updates event fields from a JSON body. It's also how an event gets published; the PDF's example is `{ "status": "POSTED" }`. The Edit and Cancel buttons in the frontend's event manager bar have no endpoint behind them yet.
+Updates event fields from a JSON body. It's also how an event gets published; the PDF's example is `{ "status": "POSTED" }`. The Edit and Cancel buttons in the frontend's event manager bar have no endpoint behind them.
 
 **Auth:** 🔴 JWT + e-board or owner of a linked club, plus field validation and a status-transition policy.
 
@@ -62,6 +73,24 @@ Updates event fields from a JSON body. It's also how an event gets published; th
 
 **Open:** patch semantics, which fields may change, concurrency control, changing associate clubs, and publishing rules. The frontend also has a `cancelled` status that the schema's `status` enum (`drafted`, `posted`, `archived`) doesn't have.
 
+**Proposed contract** (Need: **Now**; screens: Event page manager bar "EDIT EVENT" and "CANCEL EVENT", Club page Manage tab "EDIT", and the New event form when it saves or posts a resumed draft). Fixes [M12](../coverage.md#m12-resuming-a-draft-creates-a-second-event) and the cancel half of [M10](../coverage.md#m10-event-status-vocabulary-and-cancelled).
+
+- **Auth:** 🔴 JWT + e-board or owner of any linked club. `403` otherwise; `404` for an unknown or archived event.
+- **Request body:** any subset of the [create body](club-events.md#-post-clubsclubidevents)'s fields; omitted fields are unchanged. `status` is `draft`, `posted`, or `cancelled` ([Event status](events.md#event-status)). `associates`, when present, replaces the co-host list.
+
+  ```json
+  { "event": { "title": "Example Event (moved)", "location": "Room 101" }, "status": "posted" }
+  ```
+
+  Cancelling sends only `{ "status": "cancelled" }`.
+- **Response `200`:** the updated [event object](events.md#proposed-event-object), so the page can re-render without a second read:
+
+  ```jsonc
+  { "message": "Successfully updated event 42", "event": { /* event object */ } }
+  ```
+
+- **Errors:** `400` validation (same rules as create, including `location` when the result is `posted`) or a disallowed status transition; `401`, `403`, `404`, `500`.
+
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 25](../../database/README.md#25-event-update-and-publish)
 
 ## 🔴 POST `/auth/events/{eventId}/thumbnails`
@@ -72,6 +101,12 @@ Returns a presigned upload URL for an event thumbnail (PDF: `?filetype=<FILETYPE
 
 **Status:** ⬜ Not built. The signer exists at the public [`POST /clubs/{clubId}/events/{eventId}/thumbnails`](images.md#-post-clubsclubideventseventidthumbnails) with no auth, and there's no confirm step.
 
+**Proposed contract** (Need: **Now**; screen: New event form flyer dropzone, called after the event is created or updated). Only one signer should exist: this route, or the club-scoped one with an authorizer added; which is an [open question](../README.md#open-questions).
+
+- **Request body:** `{ "filename": "poster.png", "mimetype": "image/png" }`, as the built signer takes; not the PDF's query string.
+- **Response `200`:** unchanged from the built signer, `{ "uploadUrl", "imageId", "objectKey" }`.
+- **Next steps:** `PUT` the file to `uploadUrl`, then confirm with [`POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm`](images.md#-post-clubsclubideventseventidthumbnailsconfirm) (or its `/auth/events` equivalent), which also records the alt text.
+
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 27](../../database/README.md#27-club-and-event-thumbnail-metadata-assignment) for the confirm step
 
 ## 🔴 POST `/auth/events/{eventId}/images`
@@ -81,6 +116,8 @@ Returns a presigned upload URL for an event gallery image; the body includes `fi
 **Auth:** 🔴 JWT + e-board or owner of a linked club.
 
 **Status:** ⬜ Not built. The signer and confirm steps exist at public club-scoped routes ([sign](images.md#-post-clubsclubideventseventidimages), [confirm](images.md#-post-clubsclubideventseventidimagesconfirm)) with no auth. The confirm step trusts client-supplied metadata and doesn't check the object exists in S3.
+
+**Need: Later.** The New event form's "More photos for this event" row and the Event page's manager add-photo tile both show "SOON". When built, it takes the same body and returns the same shape as the built club-scoped signer.
 
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 15](../../database/README.md#15-event-image-metadata-confirmation)
 
@@ -95,5 +132,12 @@ Archives an event (PDF: "set status of event to archived"), or deletes it, depen
 **Status:** ⬜ Not built. No route, handler, archive or delete query, or cleanup.
 
 **Open:** the schema supports both `status = 'archived'` and `deleted_at`, and public reads don't filter on `deleted_at`. Pick one lifecycle before building this.
+
+**Proposed contract** (Need: **Later**: the manager bar and Manage tab have no delete button). Archiving is separate from cancelling: a cancelled event stays listed, an archived one disappears from every public read ([Event status](events.md#event-status)).
+
+- **Auth:** 🔴 JWT + e-board or owner of any linked club.
+- **Request body:** none.
+- **Response `200`:** `{"message": "Successfully archived event 42", "eventId": 42}`.
+- **Errors:** `401`, `403`, `404` (unknown or already archived), `500`.
 
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 26](../../database/README.md#26-event-deletion)

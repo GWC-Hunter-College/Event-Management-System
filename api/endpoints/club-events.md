@@ -38,7 +38,14 @@ An unknown club returns `200` with `"events": []`.
 
 - Each event shows only this club, as `owners.owner` or in `owners.associates`, even when other clubs are linked.
 - The frontend expects this list to include drafts (for its Manage tab, draft picker, and draft prefill) and a `404` for unknown clubs. Because the backend returns posted events only, those draft features never see anything.
-- Has the shared [event list quirks](events.md#event-object).
+- Has the shared [event list quirks](events.md#event-object). The Club page sends no parameters, so it gets 10 joined rows starting from 1970 and never reaches older semesters ([M9](../coverage.md#m9-list-defaults-dont-match-how-the-frontend-calls-lists)).
+
+**Proposed changes** (Need: **Now**; screens: Club page Events tab and Manage tab, and later the GWC website):
+
+- Return the [proposed event object](events.md#proposed-event-object), with `posted` and `cancelled` events ([Event status](events.md#event-status)), and every club linked to each event rather than only this one.
+- Page by event, in start-date order, as for [`GET /events`](events.md#-get-events).
+- An unknown club returns `404` `{"error": "Club with id <clubId> not found"}`.
+- Drafts stay out of this public list. The frontend reads them from [`GET /clubs/{clubId}/events/drafts`](#-get-clubsclubideventsdrafts) instead ([M1](../coverage.md#m1-drafts-in-public-lists)).
 
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/events/get.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go) · SQL [`clubs/SELECT_club_events.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club_events.sql) · [query group 10](../../database/README.md#10-club-event-list)
 
@@ -99,6 +106,43 @@ Creates a draft event, links it to the club as owner and to any associate clubs,
 - The frontend sends `status`, `flyer`, and `altText`, leaves out `timezone` and `associates`, and may leave out `description`. Even with working SQL, that body fails validation with `400`.
 - A repeated ID in `associates` would violate the `events_to_clubs` primary key.
 
+**Proposed contract** (Need: **Now**; screen: New event form, "SAVE DRAFT" and "POST EVENT"). Fixes [M2](../coverage.md#m2-create-event-body-timezone-associates-description) and [M11](../coverage.md#m11-create-event-extras-status-flyer-alttext-tags).
+
+- **Auth:** 🔴 JWT + e-board or owner of `clubId`, using the [club role check](internal.md#-club-role-check). Otherwise `403`.
+- **Request body:**
+
+  ```json
+  {
+    "event": {
+      "title": "Example Event",
+      "location": "Campus",
+      "rsvpLink": "https://events.example.edu/rsvp",
+      "startDate": "2026-09-15T21:00:00Z",
+      "endDate": "2026-09-15T23:00:00Z",
+      "timezone": "America/New_York"
+    },
+    "description": "A sanitized example.",
+    "status": "draft",
+    "altText": "Poster for Example Event",
+    "associates": []
+  }
+  ```
+
+  | Field | Rule |
+  | --- | --- |
+  | `event.title` | Required and non-empty. |
+  | `event.startDate`, `event.endDate` | Required ISO 8601 with an offset; `endDate` after `startDate`. The form always sends both, in UTC. |
+  | `event.location` | Required when `status` is `posted`; may be empty for a draft (the form only requires it when posting). |
+  | `event.timezone` | Optional IANA name; defaults to `America/New_York`, which the form assumes. |
+  | `event.rsvpLink`, `description`, `altText` | Optional. |
+  | `status` | Optional, `draft` or `posted`. Which default to use is [open](../README.md#open-questions): today's backend always drafts, and the design-mode mock defaults to `posted`. The form always sends it. |
+  | `associates` | Optional array of club IDs, default `[]`; duplicates and `clubId` itself are dropped. No UI sends it yet (co-hosting is SOON). |
+  | `flyer`, `tags` | Not accepted. The flyer is uploaded after the event exists, through the [flyer flow](images.md#how-image-uploads-work). Event tags wait until the UI has them. |
+
+- **Response `200`:** unchanged, `{"message": "Successfully inserted event into database", "eventId": 42}` (the frontend reads `eventId`).
+- **Errors:** `401` (API Gateway), `403` not a manager of the club, `404` unknown club, `400` validation with `"errors": [{"field", "message"}]`, `500` database failure.
+- **Writes:** event, owner link, associate links, and description in one transaction.
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/events/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go) · SQL [`events/INSERT_event.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event.sql), [`events/INSERT_event_club_link.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_club_link.sql), and [`events/INSERT_event_description.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_description.sql) · [query group 12](../../database/README.md#12-create-event-draft)
 
 ## 🔴 GET `/clubs/{clubId}/events/drafts`
@@ -109,7 +153,19 @@ Lists a club's drafted events for its e-board and owners (PDF: check the caller'
 
 **Path params:** `clubId`. Other parameters aren't defined.
 
-**Response:** not defined. **Proposed:** return the same [event objects](events.md#event-object), since the club event query already takes a status parameter.
+**Response:** not defined.
+
+**Proposed contract** (Need: **Now**; screens: New event step 1 "pick up a draft" panel, called once per managed club; Club page Manage tab). Fixes [M1](../coverage.md#m1-drafts-in-public-lists).
+
+- **Auth:** 🔴 JWT + e-board or owner of `clubId`. Otherwise `403`; an unknown club is `404`.
+- **Query params:** `limit` and `page`, counted in events.
+- **Response `200`:** the list envelope with [proposed event objects](events.md#proposed-event-object), all with `"status": "draft"`, in `updatedAt` order, newest first:
+
+  ```jsonc
+  { "message": "Succesfully fetched 1 events", "events": [ /* event objects */ ] }
+  ```
+
+  Drafts may have no flyer (`thumbnailUrl` absent), which the step-1 panel shows as "no flyer yet".
 
 **Status:** ⬜ Not built. `SELECT_club_events.sql` is status-parameterized, but its only handler always passes `posted`.
 

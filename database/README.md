@@ -118,7 +118,7 @@ database/
 └── client/
 ```
 
-Route-shaped query paths should help developers find behavior, not force duplication. The public and authorized event routes should share event-read queries and compose them with visibility/authorization policies. See the [planned API tree](../api/README.md#planned-api-directory-structure).
+Route-shaped query paths should help developers find behavior, not force duplication. The public and authorized event routes should share event-read queries and compose them with visibility/authorization policies. See the [planned API tree](../api/MIGRATION.md#planned-api-directory-structure).
 
 ## Current authoritative schema
 
@@ -184,7 +184,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Ensures a Cognito `sub` has a `students` row, optionally updates email, and supports both identity-trigger and request-time synchronization.
 
-**Used by:** Internal Cognito student sync and these handler paths: [`GET /me`](../infrastructure/legacy/lambda/api/me/get.go), [`GET /me/clubs`](../infrastructure/legacy/lambda/api/me/clubs/get.go), [`GET /me/events`](../infrastructure/legacy/lambda/api/me/events/get.go), [`POST /clubs`](../infrastructure/legacy/lambda/api/clubs/post/post.go), [`POST /clubs/{clubId}/events`](../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go), [`POST /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go), and the currently miswired [`DELETE /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go). Their route context is documented under [Internal student registration](../api/README.md#internal-student-registration), [Me](../api/README.md#me), and [Clubs](../api/README.md#clubs).
+**Used by:** Internal Cognito student sync and these handler paths: [`GET /me`](../infrastructure/legacy/lambda/api/me/get.go), [`GET /me/clubs`](../infrastructure/legacy/lambda/api/me/clubs/get.go), [`GET /me/events`](../infrastructure/legacy/lambda/api/me/events/get.go), [`POST /clubs`](../infrastructure/legacy/lambda/api/clubs/post/post.go), [`POST /clubs/{clubId}/events`](../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go), [`POST /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go), and the currently miswired [`DELETE /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go). Their route context is documented under [Internal functions](../api/endpoints/internal.md), [Me](../api/endpoints/me.md), [Clubs](../api/endpoints/clubs.md), [Memberships](../api/endpoints/memberships.md), and [Club events](../api/endpoints/club-events.md).
 
 **Tables:** `students`.
 
@@ -204,7 +204,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads the student matching the verified caller identity.
 
-**Used by:** [`GET /me`](../api/README.md#me).
+**Used by:** [`GET /me`](../api/endpoints/me.md#-get-me).
 
 **Tables:** `students`.
 
@@ -224,7 +224,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists the caller's club memberships, logo object key, and a computed role with owner precedence over e-board and member.
 
-**Used by:** [`GET /me/clubs`](../api/README.md#me).
+**Used by:** [`GET /me/clubs`](../api/endpoints/me.md#-get-meclubs).
 
 **Tables:** `club_members`, `clubs`, `images`.
 
@@ -244,7 +244,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads posted events associated with any club joined by the caller, including description and linked-club rows.
 
-**Used by:** Active [`GET /me/events`](../api/README.md#me), which replaced historical `GET /me/clubs/events`.
+**Used by:** Active [`GET /me/events`](../api/endpoints/me.md#-get-meevents), which replaced historical `GET /me/clubs/events`.
 
 **Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`, `club_members`.
 
@@ -264,7 +264,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists club summaries and optionally restricts them to rows present in `verified_clubs`.
 
-**Used by:** [`GET /clubs`](../api/README.md#clubs), including `?verified=true`.
+**Used by:** [`GET /clubs`](../api/endpoints/clubs.md#-get-clubs), including `?verified=true`.
 
 **Tables:** `clubs`, `images`, `verified_clubs`.
 
@@ -284,7 +284,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads one club with optional image object key and club information.
 
-**Used by:** [`GET /clubs/{clubId}`](../api/README.md#clubs).
+**Used by:** [`GET /clubs/{clubId}`](../api/endpoints/clubs.md#-get-clubsclubid).
 
 **Tables:** `clubs`, `images`, `club_info`.
 
@@ -304,7 +304,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Inserts the main club row, obtains its auto-increment ID, and inserts the matching `club_info` row atomically.
 
-**Used by:** [`POST /clubs`](../api/README.md#clubs).
+**Used by:** [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs).
 
 **Tables:** `clubs`, `club_info`.
 
@@ -324,7 +324,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Inserts a regular membership only when both student and club exist and the membership does not already exist.
 
-**Used by:** Active self-service [`POST /clubs/{clubId}/members/me`](../api/README.md#clubs); it partially satisfies historical `POST /clubs/{clubId}/members`.
+**Used by:** Active self-service [`POST /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-post-clubsclubidmembersme); it partially satisfies historical `POST /clubs/{clubId}/members`.
 
 **Tables:** `students`, `clubs`, `club_members`.
 
@@ -344,7 +344,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Deletes a membership only when it belongs to the caller/club pair and is not marked owner.
 
-**Used by:** [`DELETE /clubs/{clubId}/members/me`](../api/README.md#clubs).
+**Used by:** [`DELETE /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-delete-clubsclubidmembersme).
 
 **Tables:** `club_members`.
 
@@ -364,7 +364,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads status/date-filtered events linked to one club, with descriptions and club-logo object keys.
 
-**Used by:** Public [`GET /clubs/{clubId}/events`](../api/README.md#clubs); its status parameter can also support a future authorized draft list.
+**Used by:** Public [`GET /clubs/{clubId}/events`](../api/endpoints/club-events.md#-get-clubsclubidevents); its status parameter can also support a future authorized draft list.
 
 **Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
 
@@ -384,7 +384,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads posted event rows, descriptions, and owner/associate club relations for both list and single-event responses.
 
-**Used by:** [`GET /events`](../api/README.md#events), [`GET /events/{eventId}`](../api/README.md#events), and the historical description/club subresources now combined into event detail.
+**Used by:** [`GET /events`](../api/endpoints/events.md#-get-events), [`GET /events/{eventId}`](../api/endpoints/events.md#-get-eventseventid), and the historical description/club subresources now combined into event detail.
 
 **Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
 
@@ -404,7 +404,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Inserts a drafted event, its owner/associate club links, and description.
 
-**Used by:** [`POST /clubs/{clubId}/events`](../api/README.md#clubs).
+**Used by:** [`POST /clubs/{clubId}/events`](../api/endpoints/club-events.md#-post-clubsclubidevents).
 
 **Tables:** `events`, `events_to_clubs`, `event_descriptions`; foreign keys also depend on `students` and `clubs`.
 
@@ -424,7 +424,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Returns whether a student is an e-board member or owner of a specified club.
 
-**Used by:** Intended dependency for protected club/event writes and member administration documented under [Clubs](../api/README.md#clubs).
+**Used by:** Intended dependency for protected club/event writes and member administration documented under the [club role check](../api/endpoints/internal.md#-club-role-check).
 
 **Tables:** `club_members`.
 
@@ -444,7 +444,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Returns whether a student is an e-board member or owner of any club linked to an event.
 
-**Used by:** Intended dependency for historical [authorized event routes](../api/README.md#authorized-events).
+**Used by:** Intended dependency for historical [authorized event routes](../api/endpoints/event-management.md).
 
 **Tables:** `events_to_clubs`, `club_members`.
 
@@ -464,7 +464,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Inserts image metadata and links the new image to an event after a direct storage upload.
 
-**Used by:** [`POST /clubs/{clubId}/events/{eventId}/images/confirm`](../api/README.md#images); the generic historical internal image write can reuse the metadata insert.
+**Used by:** [`POST /clubs/{clubId}/events/{eventId}/images/confirm`](../api/endpoints/images.md#-post-clubsclubideventseventidimagesconfirm); the generic historical internal image write can reuse the metadata insert.
 
 **Tables:** `images`, `event_images`; the event foreign key also depends on `events`.
 
@@ -484,7 +484,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads image metadata for an event so the API/storage adapter can produce download URLs.
 
-**Used by:** Active but broken club-scoped gallery read and historical public/protected image reads under [Images](../api/README.md#images) and [Authorized events](../api/README.md#authorized-events).
+**Used by:** Active but broken club-scoped gallery read and historical public/protected image reads under [Images](../api/endpoints/images.md) and [Event management](../api/endpoints/event-management.md).
 
 **Tables:** Expected `event_images` joined to `images`.
 
@@ -504,7 +504,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists clubs where the caller is an e-board member or owner.
 
-**Used by:** Historical [`GET /me/clubs/eboard`](../api/README.md#me).
+**Used by:** Historical [`GET /me/clubs/eboard`](../api/endpoints/me.md#-get-meclubseboard).
 
 **Tables:** `club_members`, `clubs`, and optionally `images`.
 
@@ -524,7 +524,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists club memberships, optionally filtered to e-board/owner roles, for historical member administration routes.
 
-**Used by:** Historical `GET /clubs/{clubId}/members` and `GET /clubs/{clubId}/eboard` under [Clubs](../api/README.md#clubs).
+**Used by:** Historical `GET /clubs/{clubId}/members` and `GET /clubs/{clubId}/eboard` under [Memberships](../api/endpoints/memberships.md).
 
 **Tables:** Expected `club_members`, `students`, and possibly `student_info`.
 
@@ -562,7 +562,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Promotes/demotes a club member's e-board/owner flags.
 
-**Used by:** Historical `PUT /clubs/{clubId}/members/roles` under [Clubs](../api/README.md#clubs).
+**Used by:** Historical `PUT /clubs/{clubId}/members/roles` under [Memberships](../api/endpoints/memberships.md#-put-clubsclubidmembersroles).
 
 **Tables:** `club_members`.
 
@@ -580,7 +580,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists drafted events linked to a club for authorized managers.
 
-**Used by:** Historical `GET /clubs/{clubId}/events/drafts` under [Clubs](../api/README.md#clubs).
+**Used by:** Historical `GET /clubs/{clubId}/events/drafts` under [Club events](../api/endpoints/club-events.md#-get-clubsclubideventsdrafts).
 
 **Tables:** Same as [group 10](#10-club-event-list): `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
 
@@ -600,7 +600,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Lists, reads, creates, and removes global administrator records.
 
-**Used by:** Historical [Admin routes](../api/README.md#admins).
+**Used by:** Historical [Admin routes](../api/endpoints/admins.md).
 
 **Tables:** `admins`, with `students` needed for validated identities and richer responses.
 
@@ -620,7 +620,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Adds/removes a club from public verification state.
 
-**Used by:** Historical verification write routes under [Verification and club administration](../api/README.md#verification-and-club-administration).
+**Used by:** Historical verification write routes under [Verification](../api/endpoints/verification.md).
 
 **Tables:** `verified_clubs`, with `clubs` for target validation.
 
@@ -638,7 +638,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads a non-public event only when the caller can manage at least one associated club.
 
-**Used by:** Historical `GET /auth/events/{eventId}` and related protected reads under [Authorized events](../api/README.md#authorized-events).
+**Used by:** Historical `GET /auth/events/{eventId}` and related protected reads under [Event management](../api/endpoints/event-management.md#-get-autheventseventid).
 
 **Tables:** The union of group 11 (`events`, descriptions, clubs/images/links) and group 14 (`events_to_clubs`, `club_members`).
 
@@ -658,7 +658,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Updates allowed event fields, description, associations, and status transitions such as drafted to posted.
 
-**Used by:** Historical [`PATCH /auth/events/{eventId}`](../api/README.md#authorized-events).
+**Used by:** Historical [`PATCH /auth/events/{eventId}`](../api/endpoints/event-management.md#-patch-autheventseventid).
 
 **Tables:** At minimum `events`; potentially `event_descriptions`, `events_to_clubs`, and `event_tags` depending on the approved patch contract.
 
@@ -676,7 +676,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Archives, soft-deletes, or physically deletes an event according to an explicit lifecycle policy.
 
-**Used by:** Historical [`DELETE /auth/events/{eventId}`](../api/README.md#authorized-events).
+**Used by:** Historical [`DELETE /auth/events/{eventId}`](../api/endpoints/event-management.md#-delete-autheventseventid).
 
 **Tables:** `events` and, for physical cleanup, `event_descriptions`, `event_tags`, `events_to_clubs`, `event_images`, and possibly `images`.
 
@@ -694,7 +694,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Confirms an uploaded thumbnail, creates image metadata, and assigns the image ID to `clubs.fk_logo_id` or `events.fk_thumbnail_id`.
 
-**Used by:** Missing club/event thumbnail confirmation steps documented under [Images](../api/README.md#images).
+**Used by:** Missing club/event thumbnail confirmation steps documented under [Images](../api/endpoints/images.md#how-image-uploads-work).
 
 **Tables:** `images`, plus `clubs` or `events`.
 
@@ -712,7 +712,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Removes image links/metadata safely and coordinates deletion of the storage object.
 
-**Used by:** Historical [`DELETE /images/{imageId}`](../api/README.md#images).
+**Used by:** Historical [`DELETE /images/{imageId}`](../api/endpoints/images.md#-delete-imagesimageid).
 
 **Tables:** Depending on purpose: `event_images`, `events`, `clubs`, and `images`.
 
@@ -730,7 +730,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Determines whether creating a club should atomically make the authenticated creator its owner.
 
-**Used by:** [`POST /clubs`](../api/README.md#clubs) and subsequent club-management authorization.
+**Used by:** [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs) and subsequent club-management authorization.
 
 **Tables:** `clubs`, `club_info`, `club_members`, and `students`.
 
@@ -824,7 +824,7 @@ The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL 
 - Offline tests: all 21 query byte lengths/hashes and absence of null padding, reads beyond 4096 bytes, mock transaction success/failure and insert IDs, and model scan compatibility (including preserved NULL-to-string failures). These do not establish SQL correctness or MySQL integration parity.
 - [`infrastructure/legacy/utils/query_client/`](../infrastructure/legacy/utils/query_client/): current application SQL/client source.
 - [`infrastructure/legacy/lambda/internal/database/init/`](../infrastructure/legacy/lambda/internal/database/init/): current initialization/migration source.
-- [`api/README.md`](../api/README.md): linked endpoint migration map.
+- [`api/README.md`](../api/README.md): endpoint reference index; [`api/MIGRATION.md`](../api/MIGRATION.md): linked endpoint migration map.
 
 Run the independent module's offline unit tests from `database/` with `go test ./...`. Tests use an in-memory SQL mock and a stub dialer; they do not connect to MySQL or AWS. Migration execution, live integration tests, API cutover, SQL repairs, and the manual-review decisions above remain future work.
 

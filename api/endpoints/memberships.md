@@ -112,7 +112,7 @@ Lists a club's members from `club_members`, paginated if needed (PDF). No fronte
   }
   ```
 
-  `role` uses the same owner-over-e-board-over-member precedence as [`GET /me/clubs`](me.md#-get-meclubs). Names come from `student_info`, which nothing writes yet, so they're usually `null`. Whether e-board members may see emails is [open](../README.md#open-questions).
+  `role` uses the same owner-over-e-board-over-member precedence as [`GET /me/clubs`](me.md#-get-meclubs). Names come from `student_info`, which nothing writes yet, so they're usually `null`. Owners and e-board members see `email`; a regular member never does ([decision 6](../README.md#decisions)). Since this route is limited to e-board and owners, its callers always see emails. If the list is ever opened to members, `email` is left out for them.
 - **Errors:** `401`, `403` not e-board or owner, `404` unknown club.
 
 **Status:** ⬜ Not built. There's only placeholder text in [`stub/lambda/clubs/clubId/members/`](../../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
@@ -139,7 +139,7 @@ Lists a club's e-board members and owners (PDF). The PDF itself asks whether thi
 
 Promotes a member to e-board or owner, or demotes them (PDF: `?is_eboard=<TRUE|FALSE>&is_owner=<TRUE|FALSE>`). In the PDF's page plan, owners do this from the club's member and e-board lists.
 
-**Auth:** 🔴 JWT + **owner only** (PDF: "ONLY OWNERS CAN PROMOTE MEMBERS TO EBOARD OR OWNERS", with one query to check ownership and another to update). The existing [club role check](internal.md#-club-role-check) accepts e-board *or* owner, so it isn't enough on its own.
+**Auth:** 🔴 JWT + **owner only** ([decision 6](../README.md#decisions); PDF: "ONLY OWNERS CAN PROMOTE MEMBERS TO EBOARD OR OWNERS", with one query to check ownership and another to update). The existing [club role check](internal.md#-club-role-check) accepts e-board *or* owner, so it isn't enough on its own.
 
 **Params (PDF):** path `clubId`; query `is_eboard` and `is_owner`. Nothing in the PDF's parameters says *which* member to change.
 

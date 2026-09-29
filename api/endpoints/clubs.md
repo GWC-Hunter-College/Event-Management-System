@@ -16,7 +16,7 @@ Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/
   "name": "Example Club",
   "thumbnailUrl": "<readable-logo-url>",
   "description": "A sanitized example club.",
-  "tags": ["TECHNOLOGY", "COMMUNITY"],
+  "tags": ["technology", "community"],
   "memberCount": 41,
   "verified": true
 }
@@ -27,11 +27,13 @@ Routes are registered in [`club_routes.go`](../../infrastructure/legacy/gateway/
 | `id`, `name` | Every club read | Unchanged. |
 | `thumbnailUrl` | Every club read | A readable URL instead of the S3 key; absent when there's no logo. |
 | `description` | `GET /clubs`, `GET /clubs/{clubId}` | Newly in the list: club cards show it. `null` when unset. |
-| `tags` | `GET /clubs`, `GET /clubs/{clubId}` | New. Topic strings as the New club form sends them (up to three from its fixed list); `[]` when none. Needs a `club_tags` table ([schema needs](../coverage.md#schema-needs)). |
+| `tags` | `GET /clubs`, `GET /clubs/{clubId}` | New. Topic keys from the fixed list below, lowercase, at most 3; `[]` when none. The UI uppercases them for display. Needs a `club_tags` table ([schema needs](../coverage.md#schema-needs)). |
 | `memberCount` | `GET /clubs`, `GET /clubs/{clubId}` | New. Count of `club_members` rows. The frontend hides the count when it's absent, so it can ship later than the rest. |
 | `verified` | `GET /clubs/{clubId}` | New. Lets a club page show whether it's listed; no current screen needs it, so it's optional. |
 | `website_url` | `GET /clubs/{clubId}` | Unchanged (snake_case). No screen shows it. |
 | `role` | `GET /me/clubs` only | Unchanged. |
+
+**Topics** ([decision 5](../README.md#decisions), 2026-09-29): a fixed list, stored and returned as lowercase keys, at most 3 per club. The list is taken to be the New club form's six topics, lowercased: `technology`, `arts`, `community`, `women in stem`, `career`, `sports`. The exact key spelling (for example `women in stem` or `women-in-stem`) is still an [open question](../README.md#open-questions). The form sends its uppercase labels today, and the design-mode fixtures use other, title-case tags; both change to the keys ([frontend changes](../coverage.md#frontend-changes)).
 
 ## 🟢 GET `/clubs`
 
@@ -121,11 +123,11 @@ Creates a club and its `club_info` row in one transaction (`ExecInsertQuery`). T
   ```json
   {
     "club": { "name": "Example Club", "description": "A sanitized example club.", "website_url": "https://club.example.edu" },
-    "tags": ["TECHNOLOGY", "COMMUNITY"]
+    "tags": ["technology", "community"]
   }
   ```
 
-  `tags` is optional, at most three, each non-empty. `logo` isn't accepted: the form uploads it after creation through the [logo flow](images.md#how-image-uploads-work).
+  `tags` is optional: at most 3 keys from the [topic list](#proposed-club-object); an unknown key or a fourth tag is `400`. `logo` isn't accepted: the form uploads it after creation through the [logo flow](images.md#how-image-uploads-work).
 - **Response `200`:** unchanged, `{"message": "Successfully inserted club into database", "clubId": 7}`.
 - **Writes:** `clubs`, `club_info`, the tags, and an owner membership for the caller (`member_is_owner = TRUE`), in one transaction.
 - **Errors:** as today, plus `409` for a duplicate name instead of `500`.
@@ -179,7 +181,7 @@ Returns one club with its logo key, website, and description. It returns unverif
 
 Updates a club's name, description, website, or tags. **Proposed**; not in the planning PDF. Need: **Later**: no screen edits a club yet (logo changes go through the [logo upload flow](images.md#how-image-uploads-work)).
 
-**Auth:** 🔴 JWT + owner of the club. Whether e-board members may edit too is [open](../README.md#open-questions).
+**Auth:** 🔴 JWT + owner or e-board member of the club ([decision 6](../README.md#decisions)). Deleting a club is owner-only under the same decision, but no endpoint deletes a club and none is proposed ([open question](../README.md#open-questions)).
 
 **Path params:** `clubId`, an integer.
 
@@ -187,6 +189,6 @@ Updates a club's name, description, website, or tags. **Proposed**; not in the p
 
 **Response `200` (Proposed):** `{"message": "Successfully updated club 7", "club": { /* proposed club object */ }}`.
 
-**Errors (Proposed):** `400` validation, `401`, `403` not an owner, `404` unknown club, `409` duplicate name, `500`.
+**Errors (Proposed):** `400` validation (including topic keys), `401`, `403` not an owner or e-board member, `404` unknown club, `409` duplicate name, `500`.
 
 **Status:** ⬜ Not built. No route, handler, or update query.

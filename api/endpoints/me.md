@@ -127,7 +127,7 @@ Lists posted events linked to any club the caller has joined. The frontend's My 
 - Each event lists only the clubs the caller joined. If the caller joined an associate club but not the owner club, `owners.owner` is the empty object.
 - Has the shared [event list quirks](events.md#event-object): joined-row paging and unordered output.
 
-**Proposed changes** (Need: **Now**; screen: My Clubs stat cards and agenda): return the [proposed event object](events.md#proposed-event-object), including `cancelled` events, with every linked club (not only the ones the caller joined), paged by event in start-date order.
+**Proposed changes** (Need: **Now**; screen: My Clubs stat cards and agenda): return the [proposed event object](events.md#proposed-event-object), including `cancelled` events, with every linked club (not only the ones the caller joined), and the [proposed list parameters](events.md#proposed-list-parameters): `limit` 50 by default and 100 at most, counted in events; My Clubs calls `when=upcoming` (start time ascending).
 
 **PDF path:** the planning PDF writes this route as `GET /me/clubs/events?startDate=&endDate=`. A stub for that path exists only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go), with a hard-coded handler ([`stub/lambda/me/clubs/events/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/events/get.go)) and stale SQL ([`GET_me_clubs_events.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql)). This route is the one implementation; add an alias for the PDF path only if a client needs it.
 

@@ -61,7 +61,7 @@ An invalid value returns `400` with one of these `error` strings: `Invalid start
 
 ## Proposed event object
 
-**Proposed.** Need: **Now**. The shape every event read would return so the frontend's existing screens work (Home, Events, Club, Event, My Clubs). It keeps today's field names wherever the frontend's normalizer (`fromJsonEvent` in the frontend's `src/types/events.ts`) already reads them, and only adds or fills fields. See [coverage.md](../coverage.md#contract-mismatches) for the mismatch behind each change.
+**Proposed.** Need: **Now**. Updated for [decisions](../README.md#decisions) 3 and 4 (2026-09-29). The shape every event read would return so the frontend's existing screens work (Home, Events, Club, Event, My Clubs). It keeps today's field names wherever the frontend's normalizer (`fromJsonEvent` in the frontend's `src/types/events.ts`) already reads them, and only adds or fills fields. See [coverage.md](../coverage.md#contract-mismatches) for the mismatch behind each change.
 
 ```json
 {
@@ -80,6 +80,7 @@ An invalid value returns `400` with one of these `error` strings: `Invalid start
   "createdAt": "2026-08-01T16:00:00Z",
   "updatedAt": "2026-08-01T16:00:00Z",
   "description": "A sanitized example.",
+  "imageCount": 1,
   "images": ["<readable-image-url>"],
   "owners": {
     "owner": { "id": 7, "name": "Example Club", "thumbnailUrl": "<readable-logo-url>" },
@@ -93,14 +94,28 @@ An invalid value returns `400` with one of these `error` strings: `Invalid start
 | `thumbnailUrl` (new, top level): a readable URL for the flyer, or absent when there's none. | The frontend maps it to `flyer`; today there's no flyer field at all. | M6 |
 | `owners.*.thumbnailUrl`: the club's real logo URL instead of the fixed placeholder. | Host logos on every event list. | M6 |
 | `owners.*.name`: the club's name instead of `""`. | Removes the frontend's lookup through `GET /clubs?verified=true`, which misses unverified clubs. | M8 |
-| `images` (new): readable URLs of gallery images, flyer excluded, in upload order; `[]` when none. | The Event page gallery and the Club page's photo counts read `event.images`. | — |
-| `altText` (new): the flyer's alt text, or absent. | Collected by the New event form. Needs a new column ([schema needs](../coverage.md#schema-needs)). | M11 |
+| `imageCount` (new, every read): the number of gallery images, flyer excluded. | The Club page's past-event rows show "N PHOTOS"; the Event page's pill and "VIEW ALL N PHOTOS" can use it too. | — |
+| `images` (new, **`GET /events/{eventId}` only**): readable URLs of gallery images, flyer excluded, in upload order; `[]` when none. Lists leave it out. | The Event page gallery reads `event.images`. | — |
+| `altText` (new): the flyer's alt text, read from the flyer's `images` row; absent when there's no flyer or no alt text. | Collected by the New event form. Needs a new `images` column ([schema needs](../coverage.md#schema-needs)). | M11 |
 | `status`: one of the API values in [Event status](#event-status). | The frontend's vocabulary. | M10 |
 | `startDate`, `endDate`, `createdAt`, `updatedAt`: ISO 8601 in UTC with a `Z` offset. | The frontend parses offset-less text as browser-local time. | M14 |
 
-Unchanged: `id`, `authorId`, `thumbnailId`, `title`, `location`, `rsvpLink`, `timezone`, `description`, and the `owners` structure. Lists also change how they page; see each list's proposed changes.
+Unchanged: `id`, `authorId`, `thumbnailId`, `title`, `location`, `rsvpLink`, `timezone`, `description`, and the `owners` structure. Lists also change how they page; see [proposed list parameters](#proposed-list-parameters).
 
-`images` makes event lists heavier. If that matters, lists could return an `imageCount` instead and leave `images` to `GET /events/{eventId}`; the frontend would need a matching change to its `PastEventRow` photo count. That choice is an [open question](../README.md#open-questions).
+Lists carry the flyer (`thumbnailUrl`) and `imageCount`, not the gallery ([decision 3](../README.md#decisions)). The frontend's `PastEventRow` photo count reads `images.length` today, so it has to switch to `imageCount` ([frontend changes](../coverage.md#frontend-changes)).
+
+## Proposed list parameters
+
+**Proposed.** Need: **Now**. For `GET /events`, `GET /clubs/{clubId}/events`, `GET /me/events`, and the [drafts list](club-events.md#-get-clubsclubideventsdrafts). Follows [decision 3](../README.md#decisions).
+
+| Query param | Default | Rule |
+| --- | --- | --- |
+| `when` | none | New. `upcoming`: events that haven't ended, ordered by start time ascending. `past`: events that have ended, ordered by start time descending. Anything else is `400`. |
+| `startDate`, `endDate` | none | Optional date bounds, as today but ISO 8601. Without `when`, results are ordered by start time ascending. |
+| `limit` | `50` | Counts events, not joined rows. `1`–`100`; anything else is `400` `Invalid limit. Must be between 1 and 100.` |
+| `page` | `0` | As today, counted in events. |
+
+The Club page needs two calls: `when=upcoming` for its Upcoming section and `when=past` (paging for older semesters) for past events. Home, Events, and My Clubs use `when=upcoming`. `when` is the proposed parameter name; the decision fixes the ordering, not the name.
 
 ## Event status
 
@@ -113,7 +128,18 @@ The database stores `events.status` as `drafted`, `posted`, or `archived`. The f
 | `cancelled` | `cancelled` (new enum value, new dated migration) | Everyone. Stays in public lists with its details, so people who planned to go find out. | Called off. Set with [`PATCH`](event-management.md#-patch-autheventseventid). |
 | `archived` | `archived` | Managers only, through `GET /auth/events/{eventId}`. Never in public reads. | Removed from listings. Set with [`DELETE`](event-management.md#-delete-autheventseventid). |
 
-Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/events`, `GET /me/events`) return `posted` and `cancelled`, and exclude rows with `deleted_at` set. Allowed transitions are an [open question](../README.md#open-questions); the UI needs `draft → posted`, `draft → draft` (saving), and `posted → cancelled`.
+Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/events`, `GET /me/events`) return `posted` and `cancelled`, and exclude rows with `deleted_at` set.
+
+**Allowed transitions** ([decision 2](../README.md#decisions), 2026-09-29):
+
+| From | To | How |
+| --- | --- | --- |
+| `draft` | `posted` | [`PATCH`](event-management.md#-patch-autheventseventid) with `"status": "posted"` |
+| `posted` | `cancelled` | `PATCH` with `"status": "cancelled"` |
+| `cancelled` | `posted` | `PATCH` with `"status": "posted"` |
+| any | `archived` | [`DELETE`](event-management.md#-delete-autheventseventid); `PATCH` can't set `archived` |
+
+Nothing goes back to `draft`, and nothing leaves `archived`. Saving a draft's fields without a `status` isn't a transition. Any other change is `400`.
 
 ## 🟢 GET `/events`
 
@@ -152,8 +178,8 @@ No matches returns `200` with `"events": []`.
 **Proposed changes** (Need: **Now**; screens: Home, Events; later the GWC website):
 
 - Return the [proposed event object](#proposed-event-object), with `posted` and `cancelled` events ([Event status](#event-status)).
-- `limit` counts events, not joined rows, with a documented maximum (value [open](../README.md#open-questions)); output keeps start-date order.
-- Unchanged: access 🟢, no role, the `{"message", "events"}` envelope, and the query parameters. The frontend should send `startDate` (today) for upcoming lists.
+- Take the [proposed list parameters](#proposed-list-parameters): `limit` defaults to 50 (maximum 100) and counts events; `when=upcoming` orders by start ascending, `when=past` descending.
+- Unchanged: access 🟢, no role, and the `{"message", "events"}` envelope. The frontend sends `when=upcoming`.
 
 **Code:** route [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go) · handler [`events/get.go`](../../infrastructure/legacy/lambda/api/events/get.go) · SQL [`events/SELECT_events.sql`](../../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) · [query group 11](../../database/README.md#11-public-and-composite-event-read)
 
@@ -190,7 +216,7 @@ Returns one posted event with its description and linked clubs. The frontend's E
 - Reads at most 100 joined rows, with a fixed window of `1970-01-01` to `2100-01-01`.
 - Public reads don't filter on `deleted_at`.
 
-**Proposed changes** (Need: **Now**; screen: Event page): return the [proposed event object](#proposed-event-object), including `images` for the gallery, and return `cancelled` events as well as `posted` ones; anything else, including drafts, stays `404`. Parse `eventId` as an integer (`400` otherwise) instead of matching with `LIKE`. Access stays 🟢 with no role; the envelope stays `{"message", "event"}`.
+**Proposed changes** (Need: **Now**; screen: Event page): return the [proposed event object](#proposed-event-object), including `images`, the full gallery (this is the only read that returns it), and return `cancelled` events as well as `posted` ones; anything else, including drafts, stays `404`. Parse `eventId` as an integer (`400` otherwise) instead of matching with `LIKE`. Access stays 🟢 with no role; the envelope stays `{"message", "event"}`.
 
 **Covers two PDF subresources:** the planning PDF lists `GET /events/{eventId}/description` and `GET /events/{eventId}/clubs` as separate public routes. This response already includes `description` and `owners`, so the design folds both into this endpoint instead of giving them routes of their own. Hard-coded stubs for both paths exist only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go): [`description/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/description/get.go) (with stale SQL in [`description.sql`](../../infrastructure/legacy/stub/lambda/events/eventId/description/description.sql)) and [`clubs/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/clubs/get.go). If a client ever needs those paths, add a thin adapter over this read rather than a second copy of the query.
 

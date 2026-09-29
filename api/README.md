@@ -100,7 +100,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🟢 | GET | `/clubs` | Lists clubs; `?verified=true` returns only verified ones. | ✅ | Now | [clubs.md](endpoints/clubs.md#-get-clubs) |
 | 🔴 | POST | `/clubs` | Creates a club (with no owner). | ✅ | Now | [clubs.md](endpoints/clubs.md#-post-clubs) |
 | 🟢 | GET | `/clubs/{clubId}` | Returns one club, including unverified ones. | ✅ | Now | [clubs.md](endpoints/clubs.md#-get-clubsclubid) |
-| 🔴 | PATCH | `/clubs/{clubId}` | Updates a club (owners only). Proposed; not in the PDF. | ⬜ | Later | [clubs.md](endpoints/clubs.md#-patch-clubsclubid) |
+| 🔴 | PATCH | `/clubs/{clubId}` | Updates a club's info (owners and e-board). Proposed; not in the PDF. | ⬜ | Later | [clubs.md](endpoints/clubs.md#-patch-clubsclubid) |
 | **Memberships** | | | | | | |
 | 🔴 | POST | `/clubs/{clubId}/members/me` | Joins the caller to a club. | ✅ | Now | [memberships.md](endpoints/memberships.md#-post-clubsclubidmembersme) |
 | 🟢 | DELETE | `/clubs/{clubId}/members/me` | Leaves a club. Broken: the route has no authorizer. | 🟨 | Now | [memberships.md](endpoints/memberships.md#-delete-clubsclubidmembersme) |
@@ -118,7 +118,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | **Event management (`/auth/events`)** | | | | | | |
 | 🔴 | GET | `/auth/events/{eventId}` | Returns an event in any status, for its managers. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-get-autheventseventid) |
 | 🔴 | GET | `/auth/events/{eventId}/images` | Returns an event's images, drafts included, for its managers. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-get-autheventseventidimages) |
-| 🔴 | PATCH | `/auth/events/{eventId}` | Updates or publishes an event. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-patch-autheventseventid) |
+| 🔴 | PATCH | `/auth/events/{eventId}` | Updates an event in place: saves or posts a resumed draft (needed now, M12), cancels, or edits. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-patch-autheventseventid) |
 | 🔴 | POST | `/auth/events/{eventId}/thumbnails` | Presigned upload for an event thumbnail. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-post-autheventseventidthumbnails) |
 | 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
 | 🔴 | DELETE | `/auth/events/{eventId}` | Archives an event. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
@@ -172,6 +172,18 @@ The planning PDF names some endpoints differently. These docs use the paths in t
 
 An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code is in [pdf-coverage.md](pdf-coverage.md#design-doc-vs-code).
 
+## Decisions
+
+Product decisions taken on 2026-09-29. The proposed contracts they affect are updated to match; items that need a frontend change are listed in [coverage.md](coverage.md#frontend-changes).
+
+1. **Default event status.** When the create-event body omits `status`, the event is created as a draft. The design-mode mock, which defaults to `posted`, changes to match.
+2. **Status transitions.** Allowed: `draft → posted`, `posted → cancelled`, `cancelled → posted`, and any status → `archived`, which is what [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) does. Nothing goes back to `draft`. See [Event status](endpoints/events.md#event-status).
+3. **Event lists.** `limit` defaults to 50, with a maximum of 100. Upcoming events are ordered by start time ascending, past events descending. Lists carry the flyer URL and a photo count (`imageCount`); only the single-event read, [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid), returns the full gallery (`images`). See the [proposed event object](endpoints/events.md#proposed-event-object).
+4. **Flyer alt text** is stored on `images`, with the flyer's image row.
+5. **Club topics** come from a fixed list, stored as lowercase keys, at most 3 per club; the UI uppercases them. The design-mode fixtures change to use the same list. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
+6. **Club roles.** Owners and e-board members can edit club info. Only owners can change roles or delete the club. Owners and e-board members can see member emails; regular members can't.
+7. **GWC website.** The site finds its club through a configured club ID.
+
 ## Open questions
 
 Product and design decisions the repos don't settle. Endpoint sections repeat the questions that apply to them.
@@ -179,7 +191,7 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 **Auth and roles**
 
 - Should creating a club make the creator its owner, and should creating one require an admin? The frontend already assumes the creator becomes owner ([query group 29](../database/README.md#29-club-creator-ownership)).
-- Should member-role changes be owner-only (the PDF) or e-board-or-owner (what the existing club role check allows)? And how does `PUT /clubs/{clubId}/members/roles` say which member to change?
+- How does `PUT /clubs/{clubId}/members/roles` say which member to change? (Who may change roles is [decision 6](#decisions).) The proposal puts `studentId` in the body.
 - Admins: how is the first admin created, can admins demote themselves, and what protects the last admin? What does "their id and clubs" in `GET /admins` mean?
 - Who may verify and unverify clubs? The PDF only marks those routes protected; the admins stub note says admins do it.
 - Should unverified clubs stay publicly readable through `GET /clubs/{clubId}` (current behavior), or be admin-only with a verified badge (a PDF p. 50 suggestion)?
@@ -188,19 +200,15 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 **Events**
 
 - Should the protected event routes be `/auth/events/{eventId}/...` (the revamp) or the current club-scoped media paths? Either way, keep one upload signer.
-- What can `PATCH /auth/events/{eventId}` change (fields, associate clubs, concurrency control), and what are the publish rules? Is archiving `status = 'archived'` or `deleted_at` (public reads ignore `deleted_at`)? Is the frontend's `cancelled` status the same thing as `archived`?
+- What can `PATCH /auth/events/{eventId}` change (fields, associate clubs, concurrency control), and what are the publish rules? Is archiving `status = 'archived'` or `deleted_at` (public reads ignore `deleted_at`)? (Cancelling and archiving are distinct: [decision 2](#decisions).)
 - Where do managers get drafts: from `GET /clubs/{clubId}/events` (what the frontend expects) or a protected `GET /clubs/{clubId}/events/drafts` (the PDF)? [coverage.md](coverage.md#m1-drafts-in-public-lists) recommends the protected route. Which statuses may `GET /auth/events/{eventId}` return, and does an event's author get rights of their own?
-- Create-event contract: the frontend sends `status` and omits `timezone` and `associates`; the handler requires both, requires `description`, and always stores `drafted`. [coverage.md](coverage.md#m2-create-event-body-timezone-associates-description) recommends the backend make them optional. When `status` is omitted, should the default be `draft` (today's backend) or `posted` (the design-mode mock)?
-- Status transitions: the UI needs `draft → posted` and `posted → cancelled`. May a cancelled event be reposted, or a posted one go back to draft? Is cancelling distinct from archiving, as [Event status](endpoints/events.md#event-status) proposes?
-- Lists: what's the maximum `limit`? Should event lists carry every gallery URL in `images`, or only an `imageCount`, leaving `images` to `GET /events/{eventId}`?
-- Where is a flyer's alt text stored: a column on `events`, or on `images`?
-- Member lists: which fields and pagination does `GET /clubs/{clubId}/members` need, may ordinary members see any of it, and is `/eboard` a separate endpoint or a filter on it?
+- Create-event contract: the frontend sends `status` and omits `timezone` and `associates`; the handler requires both, requires `description`, and always stores `drafted`. [coverage.md](coverage.md#m2-create-event-body-timezone-associates-description) recommends the backend make them optional. (The default status is [decision 1](#decisions).)
+- Member lists: which fields and pagination does `GET /clubs/{clubId}/members` need, may ordinary members see the list at all (without emails, per [decision 6](#decisions)), and is `/eboard` a separate endpoint or a filter on it?
 
 **Clubs**
 
-- Topics: are club tags limited to the New club form's fixed list (`TECHNOLOGY`, `ARTS`, `COMMUNITY`, `WOMEN IN STEM`, `CAREER`, `SPORTS`), and in what case? The design-mode fixtures use other, title-case tags.
-- May e-board members edit a club (`PATCH /clubs/{clubId}`), or only owners? May they see members' emails?
-- How does the GWC website identify its club: a configured club ID, or a lookup by name?
+- Topic keys: the fixed list is assumed to be the New club form's six topics, lowercased (`technology`, `arts`, `community`, `women in stem`, `career`, `sports`). Is that the list, and are keys with spaces acceptable, or should they be slugs such as `women-in-stem`?
+- Deleting a club is owner-only ([decision 6](#decisions)), but no endpoint deletes a club, and none is proposed. Is one needed, and what happens to the club's events and members?
 
 **Images**
 

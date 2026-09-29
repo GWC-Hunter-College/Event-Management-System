@@ -169,7 +169,7 @@ Saves an uploaded event thumbnail by pointing `events.fk_thumbnail_id` at it (st
 - **Request body:** `{ "filename", "mimetype", "imageId", "objectKey", "altText" }`. `altText` is optional; the rest are the signer's values. `objectKey` must start with `events/{eventId}/thumbnails/`, and the object must exist in storage.
 - **Response `200`:** `{ "message": "Flyer saved", "eventId": 42, "thumbnailUrl": "<readable-flyer-url>" }`.
 - **Errors:** `400`, `401`, `403`, `404` unknown event, `500`.
-- **Writes:** the `images` row, `events.fk_thumbnail_id`, and the alt text ([schema needs](../coverage.md#schema-needs)), in one transaction.
+- **Writes:** the `images` row (with `altText` in its new alt-text column, [decision 4](../README.md#decisions); see [schema needs](../coverage.md#schema-needs)) and `events.fk_thumbnail_id`, in one transaction. Confirming a new flyer is also how its alt text changes.
 
 **Plan:** PDF upload guide, p. 26 · [query group 27](../../database/README.md#27-club-and-event-thumbnail-metadata-assignment)
 

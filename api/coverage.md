@@ -11,6 +11,7 @@ Maps every route in the Hunter College Clubs frontend to the endpoints behind it
 - **Status** is the endpoint's status on the [README legend](README.md#legend): ✅ implemented, 🟨 partial or broken, ⬜ not built. "—" means no endpoint is involved (the UI works client-side or shows static content).
 - **Need** says when the frontend needs the endpoint or change: **Now** if the UI for it already exists, **Later** if it doesn't (including UI that only shows a "SOON" pill or "This feature isn't available yet"). Only endpoints with work to do have a Need.
 - **M1–M14** refer to [Contract mismatches](#contract-mismatches).
+- **Decisions** taken on 2026-09-29 are recorded in [README.md](README.md#decisions); the contracts linked here already follow them. The frontend changes they imply are collected under [Frontend changes](#frontend-changes).
 
 ## Needed now
 
@@ -22,7 +23,7 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | Club description, tags, member count, logo URL | [Proposed club object](endpoints/clubs.md#proposed-club-object) on [`GET /clubs`](endpoints/clubs.md#-get-clubs), [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid), [`GET /me/clubs`](endpoints/me.md#-get-meclubs) | Clubs, Club, My Clubs, Event | M6, M13 |
 | Creating events that work | [`POST /clubs/{clubId}/events`](endpoints/club-events.md#-post-clubsclubidevents) | New event form | M2, M11 |
 | Drafts for managers | [`GET /clubs/{clubId}/events/drafts`](endpoints/club-events.md#-get-clubsclubideventsdrafts), [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid) | New event step 1, New event form, Club → Manage | M1, M12 |
-| Editing, publishing, and cancelling events | [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | Event manager bar, Club → Manage, New event form (resumed draft) | M10, M12 |
+| Updating an event in place: saving or posting a resumed draft, and cancelling | [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | New event form (resumed draft), Event manager bar "CANCEL EVENT". The "EDIT" buttons use it too, but they're Later. | M12, M10 |
 | Flyer upload | [`POST /auth/events/{eventId}/thumbnails`](endpoints/event-management.md#-post-autheventseventidthumbnails), [`POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm`](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm) | New event form | M6, M11 |
 | Club creation and logo upload | [`POST /clubs`](endpoints/clubs.md#-post-clubs), [`POST /clubs/{clubId}/thumbnails`](endpoints/images.md#-post-clubsclubidthumbnails), [`POST /clubs/{clubId}/thumbnails/confirm`](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) | New club | M4, M7, M13 |
 | Leaving a club, and status codes | [`DELETE /clubs/{clubId}/members/me`](endpoints/memberships.md#-delete-clubsclubidmembersme), [`POST /clubs/{clubId}/members/me`](endpoints/memberships.md#-post-clubsclubidmembersme) | Club | M3 |
@@ -70,7 +71,7 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | --- | --- | --- | --- | --- |
 | Header: logo, name, bio, topic tags, member count | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | ✅ | Now | Tags and member count are missing (M13); logo is an S3 key (M6). |
 | "We couldn't find that club" | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | ✅ | Now | Backend sends `400`, not `404` (M3). The page treats any failure as not found, so it still works. |
-| Upcoming and past counts; Events tab with upcoming rows, past events grouped by semester, "load earlier", photo count on past rows | [`GET /clubs/{clubId}/events`](endpoints/club-events.md#-get-clubsclubidevents) | ✅ | Now | 10 joined rows by default (M9), so older semesters never load. Photo counts need `images` in the [event object](endpoints/events.md#proposed-event-object). |
+| Upcoming and past counts; Events tab with upcoming rows, past events grouped by semester, "load earlier", photo count on past rows | [`GET /clubs/{clubId}/events`](endpoints/club-events.md#-get-clubsclubidevents) | ✅ | Now | 10 joined rows by default (M9), so older semesters never load. Photo counts need `imageCount` in the [event object](endpoints/events.md#proposed-event-object); lists don't carry the gallery ([decision 3](README.md#decisions)). |
 | Role label, "JOINED" menu, "+ NEW EVENT", Manage tab visibility | [`GET /me/clubs`](endpoints/me.md#-get-meclubs) | ✅ | | |
 | "+ JOIN CLUB" | [`POST /clubs/{clubId}/members/me`](endpoints/memberships.md#-post-clubsclubidmembersme) | ✅ | Now | `400` for a missing club instead of `404` (M3). |
 | "Leave club" (with confirm modal; hidden for owners) | [`DELETE /clubs/{clubId}/members/me`](endpoints/memberships.md#-delete-clubsclubidmembersme) | 🟨 | Now | The route has no authorizer, so every call fails with `400`. |
@@ -79,7 +80,7 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | Board tab (SOON, "The club board is coming soon") | none | — | | [Not covered by the API yet](#not-covered-by-the-api-yet). |
 | Announcements tab (SOON, "This feature isn't available yet") | none | — | | [Not covered by the API yet](#not-covered-by-the-api-yet). |
 | Manage tab: drafts and upcoming events with a status pill | [`GET /clubs/{clubId}/events/drafts`](endpoints/club-events.md#-get-clubsclubideventsdrafts) and [`GET /clubs/{clubId}/events`](endpoints/club-events.md#-get-clubsclubidevents) | ⬜ / ✅ | Now | Today the page looks for drafts in the public list, which never has them (M1). |
-| Manage tab: "EDIT" per event (disabled, SOON) | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid), [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | ⬜ | Now | The button exists; only the endpoint is missing. |
+| Manage tab: "EDIT" per event (disabled, SOON) | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid), [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | ⬜ | Later | The button is disabled with a SOON pill. `PATCH` itself is needed now for resumed drafts (M12). |
 | Manage tab: member list, e-board list, promote and demote | [`GET /clubs/{clubId}/members`](endpoints/memberships.md#-get-clubsclubidmembers), [`GET /clubs/{clubId}/eboard`](endpoints/memberships.md#-get-clubsclubideboard), [`PUT /clubs/{clubId}/members/roles`](endpoints/memberships.md#-put-clubsclubidmembersroles) | ⬜ | Later | No UI yet: the Manage tab lists events only. |
 | Edit club | [`PATCH /clubs/{clubId}`](endpoints/clubs.md#-patch-clubsclubid) | ⬜ | Later | No UI yet. |
 
@@ -91,12 +92,12 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | --- | --- | --- | --- | --- |
 | Title, when and where (in the event's timezone), about, RSVP link | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | ✅ | Now | Times shift by the viewer's UTC offset (M14). RSVP shows only for absolute `http(s)` links. |
 | "We couldn't find that event" | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | ✅ | | `404` works as expected. Drafts also return `404`. |
-| Gallery: flyer plus extra photos; "VIEW ALL N PHOTOS"; "PAST EVENT · N PHOTOS" | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | ✅ | Now | Reads `images` from the event object, which the backend doesn't return (see the [proposed event object](endpoints/events.md#proposed-event-object)). There's no flyer URL either (M6). |
+| Gallery: flyer plus extra photos; "VIEW ALL N PHOTOS"; "PAST EVENT · N PHOTOS" | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | ✅ | Now | Reads `images` from the event object, which the backend doesn't return (see the [proposed event object](endpoints/events.md#proposed-event-object)); only this single-event read will carry the full gallery. There's no flyer URL either (M6). |
 | "Cancelled" pill; share-only actions for cancelled events | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | ✅ | Now | Needs the `cancelled` status (M10). |
 | "Hosted by" logo and name, linking to the club | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | ✅ | | Uses `owners.owner.id` from the event. |
 | Add to calendar, share | — | — | | Client-side. |
 | Manager bar ("You own …" / "You're on the e-board of …") | [`GET /me/clubs`](endpoints/me.md#-get-meclubs) | ✅ | | Shown to the host club's e-board and owners only. |
-| Manager bar: "EDIT EVENT" (shows "This feature isn't available yet") | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid), [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | ⬜ | Now | |
+| Manager bar: "EDIT EVENT" (shows "This feature isn't available yet") | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid), [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | ⬜ | Later | Editing a posted event waits for an edit form. Both endpoints are needed now for other reasons: `?draft=` prefill and resumed drafts (M1, M12). |
 | Manager bar: "CANCEL EVENT" on upcoming events (shows "This feature isn't available yet") | [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) with `status: "cancelled"` | ⬜ | Now | Cancelling keeps the event listed; it isn't archiving or deleting (M10). |
 | Delete event | [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) | ⬜ | Later | The manager bar has no delete button. |
 | Gallery: "SOON" add-photo tile for managers | [`POST /auth/events/{eventId}/images`](endpoints/event-management.md#-post-autheventseventidimages) and its confirm step | ⬜ | Later | Placeholder only. |
@@ -154,7 +155,7 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | What the user sees or does | Endpoint | Status | Need | Notes |
 | --- | --- | --- | --- | --- |
 | Name and description; redirect to the new club page | [`POST /clubs`](endpoints/clubs.md#-post-clubs) | ✅ | Now | The creator doesn't become the owner, so the new club page has no Manage tab or "+ NEW EVENT" (M4). |
-| Topics (up to three from a fixed list) | [`POST /clubs`](endpoints/clubs.md#-post-clubs) `tags` | ✅ | Now | Sent but ignored; there's no club tags table (M13). |
+| Topics (up to three from a fixed list) | [`POST /clubs`](endpoints/clubs.md#-post-clubs) `tags` | ✅ | Now | Sent but ignored; there's no club tags table (M13). The form sends uppercase labels; the API takes lowercase keys ([decision 5](README.md#decisions)). |
 | Logo dropzone | [`POST /clubs/{clubId}/thumbnails`](endpoints/images.md#-post-clubsclubidthumbnails), then [`POST /clubs/{clubId}/thumbnails/confirm`](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) | ✅ / ⬜ | Now | The form sends a `blob:` URL as `logo` instead (M7, M13). |
 | "How it looks on Discover" preview | — | — | | Client-side. |
 
@@ -225,37 +226,53 @@ Where the frontend and backend disagree. M1–M7 were recorded in the Phase 1 re
 
 - **Frontend:** calls `GET /events`, `GET /clubs/{clubId}/events`, and `GET /me/events` with no parameters and expects every upcoming (and, on the Club page, past) event. Home shows up to 16 tiles.
 - **Backend:** defaults to `startDate=1970-01-01` and `limit=10`, counted in joined event-to-club rows, not events. The handler then groups rows in a Go map, so the output isn't sorted even though the SQL orders by start date.
-- **Change: both.** The backend should page by event, keep the SQL's start-date order, and document a maximum `limit`. The frontend should send `startDate` (today, for upcoming lists) and a `limit`, and page for older events on the Club page.
+- **Change: both.** Per [decision 3](README.md#decisions), the backend pages by event with `limit` defaulting to 50 (maximum 100), orders upcoming events by start time ascending and past events descending, and puts the flyer and `imageCount` in lists (the gallery only on the single-event read). The frontend asks for `when=upcoming` or `when=past` ([proposed list parameters](endpoints/events.md#proposed-list-parameters)) and pages for older events on the Club page.
 
 ### M10. Event status vocabulary, and `cancelled`
 
 - **Frontend:** uses `draft`, `posted`, and `cancelled`. A cancelled event stays listed with a "Cancelled" pill (Events, Club, Event page) and loses its RSVP and calendar actions. `fromJsonEvent` maps any other non-empty status to `draft`, so an `archived` event would show as a draft.
 - **Backend:** the `events.status` enum is `drafted`, `posted`, `archived`, and public reads return `posted` only.
-- **Change: backend first, then frontend.** Expose `draft`, `posted`, and `cancelled` in the API, mapping the database's `drafted` to `draft`. Add `cancelled` to the enum in a new dated migration. Public reads return `posted` and `cancelled`; `archived` (and anything with `deleted_at` set) never appears publicly. Cancelling is a [`PATCH`](endpoints/event-management.md#-patch-autheventseventid) to `cancelled`; archiving is [`DELETE`](endpoints/event-management.md#-delete-autheventseventid). The frontend should stop mapping unknown statuses to `draft`. See [Event status](endpoints/events.md#event-status).
+- **Change: backend first, then frontend.** Expose `draft`, `posted`, and `cancelled` in the API, mapping the database's `drafted` to `draft`. Add `cancelled` to the enum in a new dated migration. Public reads return `posted` and `cancelled`; `archived` (and anything with `deleted_at` set) never appears publicly. Cancelling is a [`PATCH`](endpoints/event-management.md#-patch-autheventseventid) to `cancelled`; archiving is [`DELETE`](endpoints/event-management.md#-delete-autheventseventid). Allowed transitions follow [decision 2](README.md#decisions): `draft → posted`, `posted → cancelled`, `cancelled → posted`, and any status → `archived`; nothing goes back to `draft`. The frontend should stop mapping unknown statuses to `draft`. See [Event status](endpoints/events.md#event-status).
 
 ### M11. Create-event extras: `status`, `flyer`, `altText`, `tags`
 
 - **Frontend:** `EventForm.tsx` sends `status` (`draft` or `posted`), `flyer` (a `blob:` URL that only exists in the browser), and `altText`. `docs/api.md` lists `tags`, but the form has no tag input and doesn't send them, and the frontend `Event` type has no tags field.
 - **Backend:** ignores all four and always stores `drafted`. The schema has no column for flyer alt text; `event_tags` exists but nothing reads or writes it.
-- **Change: both.** The backend accepts `status` and `altText` (alt text needs a new column; see [Schema needs](#schema-needs)). The frontend stops sending `flyer` and uploads the file through the [flyer flow](endpoints/images.md#how-image-uploads-work) after the event exists. Event tags wait until the UI has them.
+- **Change: both.** The backend accepts `status`, and an omitted `status` means `draft` ([decision 1](README.md#decisions)). Alt text is stored on the flyer's `images` row ([decision 4](README.md#decisions)), so the frontend sends `altText` with the [flyer confirm](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm), not with the create body. The frontend also stops sending `flyer` and uploads the file through the [flyer flow](endpoints/images.md#how-image-uploads-work) after the event exists. Event tags wait until the UI has them.
 
 ### M12. Resuming a draft creates a second event
 
 - **Frontend:** with `?draft=:eventId`, the form prefills from the draft but still submits `POST /clubs/{clubId}/events`, which creates a new event and leaves the draft behind.
 - **Backend:** has no update route.
-- **Change: frontend, after the backend builds [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid).** A resumed draft is saved or posted with `PATCH`.
+- **Change: frontend, after the backend builds [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid).** A resumed draft is saved (fields only, no `status`) or posted (`"status": "posted"`) with `PATCH`. That makes `PATCH` **needed now**, even though the Edit buttons that will also use it are Later.
 
 ### M13. Club fields: description, tags, member count, logo
 
 - **Frontend:** club cards and the club header show description, topic tags, and member count; `ClubForm.tsx` sends `tags` (up to three from a fixed list) and a `logo` `blob:` URL. Search on the Clubs page matches tags.
 - **Backend:** `GET /clubs` returns only `id`, `name`, and `thumbnailUrl`. `GET /clubs/{clubId}` adds `description` and `website_url` but no tags or count. `POST /clubs` ignores `tags` and `logo`, and the schema has no table for club tags.
-- **Change: backend** for the fields (and a new `club_tags` table); **frontend** for the logo, which moves to the [logo upload flow](endpoints/images.md#how-image-uploads-work). See the [proposed club object](endpoints/clubs.md#proposed-club-object).
+- **Change: backend** for the fields (and a new `club_tags` table); **frontend** for the logo, which moves to the [logo upload flow](endpoints/images.md#how-image-uploads-work). Topics are a fixed list of lowercase keys, at most 3 per club, uppercased by the UI ([decision 5](README.md#decisions)); the frontend sends keys instead of its uppercase labels. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
 
 ### M14. Date and time format
 
 - **Frontend:** sends UTC ISO 8601 strings (`wallTimeToUtcIso` in `src/lib/timezone.ts`, for example `2026-09-15T21:00:00.000Z`). It reads the backend's `YYYY-MM-DD HH:MM:SS` by replacing the space with `T` (`toIso`), which JavaScript parses as the browser's local time.
 - **Backend:** returns MySQL `DATETIME` text with no offset. How the handler stores a `Z`-suffixed string hasn't been exercised, because event creation is broken.
 - **Change: backend.** Store UTC and return ISO 8601 with an offset (`2026-09-15T21:00:00Z`) in every event read. Otherwise times shift by each viewer's UTC offset. The frontend's `toIso` already passes ISO strings through unchanged.
+
+## Frontend changes
+
+Changes the frontend needs to match the proposed contracts and the [decisions](README.md#decisions). Nothing here has been changed in the frontend repo.
+
+| Change | Where | Why |
+| --- | --- | --- |
+| The design-mode mock creates a draft when `status` is omitted, instead of `posted`. | `src/mocks/handlers.ts` (`POST /clubs/:clubId/events`) | Decision 1. |
+| The design-mode fixtures use the fixed topic list (lowercase keys, at most 3 per club). | `src/mocks/fixtures.ts`, `src/mocks/data.ts` | Decision 5; the fixtures use title-case tags outside the list, such as `Academic` and `Food`. |
+| The New club form sends topic keys (lowercase) and displays them uppercased. | `src/pages/ClubForm.tsx` | Decision 5. |
+| Past-event rows read the photo count from `imageCount`, not `images.length`. | `src/components/Club/EventsTab.tsx` (`PastEventRow`), `src/types/events.ts` | Decision 3: lists don't carry `images`. |
+| Lists ask for `when=upcoming` or `when=past` and page with `limit`/`page`. | `src/hooks/useEvents.ts`, `useClubEvents.ts`, `useMyEvents.ts` | M9, decision 3. |
+| Drafts come from the protected drafts list and `GET /auth/events/{eventId}`. | `src/hooks/useMyDrafts.ts`, `src/pages/Club.tsx`, `src/pages/EventForm.tsx` | M1. |
+| A resumed draft is saved or posted with `PATCH`, never with `status: "draft"` on a posted event. | `src/pages/EventForm.tsx` | M12, decision 2. |
+| The flyer and logo go through the upload flows; `altText` is sent with the flyer confirm. | `src/pages/EventForm.tsx`, `src/pages/ClubForm.tsx` | M7, M11, M13, decision 4. |
+| Unknown statuses aren't mapped to `draft`. | `src/types/events.ts` (`fromJsonEvent`) | M10. |
 
 ## GWC website
 
@@ -264,9 +281,9 @@ Where the frontend and backend disagree. M1–M7 were recorded in the Phase 1 re
 | What it shows | Endpoint | Status | Need | Notes |
 | --- | --- | --- | --- | --- |
 | Club info | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | ✅ | Later | 🟢 public. Logo needs M6. |
-| Upcoming events and the featured event (title, schedule, RSVP) | [`GET /clubs/{clubId}/events?startDate=<today>`](endpoints/club-events.md#-get-clubsclubidevents) | ✅ | Later | 🟢 public. Needs M8, M9, and M14 to be reliable. |
+| Upcoming events and the featured event (title, schedule, RSVP) | [`GET /clubs/{clubId}/events?when=upcoming`](endpoints/club-events.md#-get-clubsclubidevents) | ✅ | Later | 🟢 public. Needs M8, M9, and M14 to be reliable; `when` is a [proposed list parameter](endpoints/events.md#proposed-list-parameters). |
 
-No new endpoint is needed. CORS already allows all origins. How the site knows the GWC club's ID is an [open question](README.md#open-questions).
+No new endpoint is needed. CORS already allows all origins. The site finds its club through a configured club ID ([decision 7](README.md#decisions)), so no lookup by name is needed.
 
 ## Admin
 
@@ -279,8 +296,8 @@ The proposals above need these schema changes. Each goes in a new dated migratio
 | Change | For | Need |
 | --- | --- | --- |
 | Add `cancelled` to `events.status` | M10 | Now |
-| A column for flyer alt text (on `events` or `images`; which is [open](README.md#open-questions)) | M11 | Now |
-| A `club_tags (fk_club_id, tag)` table | M13 | Now |
+| An alt-text column on `images` ([decision 4](README.md#decisions)) | M11 | Now |
+| A `club_tags (fk_club_id, tag)` table holding lowercase topic keys, at most 3 per club (enforced by the API) ([decision 5](README.md#decisions)) | M13 | Now |
 
 New queries: member count per club, club tags read and write, and club update. The event update ([group 25](../database/README.md#25-event-update-and-publish)), drafts list ([group 21](../database/README.md#21-club-draft-events)), thumbnail confirm ([group 27](../database/README.md#27-club-and-event-thumbnail-metadata-assignment)), and creator ownership ([group 29](../database/README.md#29-club-creator-ownership)) groups already exist.
 

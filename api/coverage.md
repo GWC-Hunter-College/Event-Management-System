@@ -78,7 +78,7 @@ The endpoint work the existing UI is waiting on, in the order the screens depend
 | "Share club" | — | — | | Client-side. |
 | "Event reminders" menu item (SOON) | none | — | | [Not covered by the API yet](#not-covered-by-the-api-yet). |
 | Board tab (SOON, "The club board is coming soon") | none | — | | [Not covered by the API yet](#not-covered-by-the-api-yet). |
-| Announcements tab (SOON, "This feature isn't available yet") | none | — | | [Not covered by the API yet](#not-covered-by-the-api-yet). |
+| Announcements tab (SOON, "This feature isn't available yet") | [`GET /clubs/{clubId}/announcements`](endpoints/announcements.md#-get-clubsclubidannouncements); for managers, the drafts list, create, edit and post, delete, and restore in [announcements.md](endpoints/announcements.md) | ⬜ | Later | The tab shows SOON. All eight routes are Proposed; the tables and queries exist. |
 | Manage tab: drafts and upcoming events with a status pill | [`GET /clubs/{clubId}/events/drafts`](endpoints/club-events.md#-get-clubsclubideventsdrafts) and [`GET /clubs/{clubId}/events`](endpoints/club-events.md#-get-clubsclubidevents) | ⬜ / ✅ | Now | Today the page looks for drafts in the public list, which never has them (M1). |
 | Manage tab: "EDIT" per event (disabled, SOON) | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid), [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | ⬜ | Later | The button is disabled with a SOON pill. `PATCH` itself is needed now for resumed drafts (M12). |
 | Manage tab: member list, e-board list, promote and demote | [`GET /clubs/{clubId}/members`](endpoints/memberships.md#-get-clubsclubidmembers), [`GET /clubs/{clubId}/eboard`](endpoints/memberships.md#-get-clubsclubideboard), [`PUT /clubs/{clubId}/members/roles`](endpoints/memberships.md#-put-clubsclubidmembersroles) | ⬜ | Later | No UI yet: the Manage tab lists events only. |
@@ -304,7 +304,6 @@ The queries these proposals need, including member count, club topics, club upda
 ## Not covered by the API yet
 
 - Board tab (club photo and note wall)
-- Announcements tab
 - Event reminders
 - Import and export
 - Edit history

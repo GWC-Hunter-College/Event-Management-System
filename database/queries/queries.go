@@ -19,6 +19,10 @@ import (
 //go:embed authorization/clubs/can_manage/*.sql authorization/clubs/is_member/*.sql authorization/clubs/is_owner/*.sql
 //go:embed authorization/events/can_manage/*.sql authorization/events/manages_owner_club/*.sql authorization/admins/is_admin/*.sql
 //go:embed admins/list/*.sql admins/get/*.sql admins/create/*.sql admins/delete/*.sql
+//go:embed clubs/announcements/list/*.sql clubs/announcements/drafts/*.sql
+//go:embed announcements/read/*.sql announcements/create/*.sql announcements/update/*.sql
+//go:embed announcements/delete/*.sql announcements/restore/*.sql announcements/purge/*.sql
+//go:embed authorization/announcements/can_manage/*.sql authorization/announcements/manages_owner_club/*.sql
 var files embed.FS
 
 // Load returns the complete SQL file at a slash-separated path relative to this

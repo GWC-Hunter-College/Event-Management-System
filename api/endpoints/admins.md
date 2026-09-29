@@ -80,7 +80,8 @@ Permanently removes what was deleted more than 30 days ago. **Proposed**; not in
 
 - events deleted more than 30 days ago, with their descriptions, tags, club links, and gallery links;
 - the flyers and gallery images those events used, unless a club logo or another event still uses them; and
-- images deleted more than 30 days ago that nothing references (replaced logos and flyers, and takedowns), with their S3 files.
+- images deleted more than 30 days ago that nothing references (replaced logos and flyers, and takedowns), with their S3 files; and
+- [announcements](announcements.md) deleted more than 30 days ago, with their club links.
 
 Nothing deleted less than 30 days ago is touched, so everything that can still be [restored](event-management.md#-post-autheventseventidrestore) survives: the purge and the restore use the same 30-day cutoff ([decision 9](../README.md#decisions)).
 
@@ -92,7 +93,7 @@ Nothing deleted less than 30 days ago is touched, so everything that can still b
 - **Response `200`:**
 
   ```json
-  { "message": "Purge complete", "eventsPurged": 3, "imagesPurged": 7, "imageFilesFailed": 0 }
+  { "message": "Purge complete", "eventsPurged": 3, "announcementsPurged": 1, "imagesPurged": 7, "imageFilesFailed": 0 }
   ```
 
   `imageFilesFailed` counts S3 deletes that failed after their database row was removed. Those leave orphan files that nothing references, which is harmless; a later cleanup can list the bucket.

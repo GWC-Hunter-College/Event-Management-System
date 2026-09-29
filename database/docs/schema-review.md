@@ -57,7 +57,8 @@ Still open: whether an event's author, or an admin, gets management rights beyon
 | [M4](#m4-other-nullable-columns) | Other nullable columns | `NOT NULL` where every write sets a value | Club and event reads |
 | [K1](#k1-indexes) | Indexes | `events (status, start_date)` and named indexes for every foreign key | Event lists, drafts list, member count |
 | [F1](#f1-on-delete-behavior) | No `ON DELETE` actions | The target policy, applied | Admin purge; future club and account deletion |
-| [V1](#v1-read-views) | Every event read repeats the same joins | Views `event_details` and `club_details` | Every club and event read |
+| [V1](#v1-read-views) | Every event read repeats the same joins | Views `event_details`, `club_details`, and `announcement_details` | Every club, event, and announcement read |
+| [A1](#a1-announcements) | No announcements | `announcements`, `announcements_to_clubs` | The Announcements tab (Later) |
 | [H1](#h1-event-edit-history), [H2](#h2-event-tags) | Older designs: edit history, event tags | Note only | Not covered by the API yet |
 
 ## Images
@@ -336,12 +337,26 @@ The event-side cascades are what let the purge hard-delete an event with one `DE
 
 ### V1. Read views
 
-Every event read needs the same columns: the event, its flyer's key and alt text, its description, its photo count, its owner club, and its co-hosts. The legacy queries each repeated those joins, returned one row per event-to-club link, and so paged by links instead of events. The baseline defines two views:
+Every event read needs the same columns: the event, its flyer's key and alt text, its description, its photo count, its owner club, and its co-hosts. The legacy queries each repeated those joins, returned one row per event-to-club link, and so paged by links instead of events. The baseline defines three views:
 
 - **`event_details`:** one row per event that isn't soft-deleted. The owner club is three plain columns; the co-hosts are a JSON array (`[{id, name, logoObjectKey}]`, in no guaranteed order, so the API sorts it by id). Every list and single read selects from it, so `LIMIT` counts events and the soft-delete filter is written once.
 - **`club_details`:** one row per club, with the logo key, `club_info`, `tags` as a JSON array in slot order, `member_count`, and `verified`.
+- **`announcement_details`:** one row per announcement that isn't soft-deleted, with the owner club and co-owning clubs in the same shape as `event_details` (A1).
 
 They are plain views (no stored data), so they can't go stale. They are part of the schema, so a change to a view is a migration like any other.
+
+## Announcements
+
+### A1. Announcements
+
+Added after the review, for the club page's Announcements tab (Later). Modelled on events, so every rule above that applies to events applies here:
+
+- **`announcements`:** `id`, `fk_author_id` (`ON DELETE SET NULL`), `title` (`NOT NULL`), `body` (`TEXT`, nullable, because a draft may not have one yet; posting requires one), `status ENUM('draft', 'posted') NOT NULL DEFAULT 'draft'`, `created_at`, `updated_at` (`ON UPDATE`), and `deleted_at`. Indexes on `(status, created_at)` for the posted lists, the author, and `deleted_at`.
+- **Status:** `draft → posted` is the only transition, enforced in the posting `UPDATE`'s `WHERE` clause as for events (S3). There's no `cancelled`.
+- **Deleting:** the same soft delete, 30-day restore, and admin purge as events (S2), with the same hard-coded 30 days.
+- **`announcements_to_clubs`:** `(fk_announcement_id, fk_club_id, club_is_announcement_owner)`, with the same one-owner functional index as `events_to_clubs` (M3), so one announcement can belong to several clubs (HunterHacks for the CS clubs). The announcement side cascades on delete, so the purge removes the links with it; the club side is `RESTRICT` (F1).
+- **Room to grow:** no images or tags yet. A flyer would be a nullable `fk_thumbnail_id` to `images`, a gallery an `announcement_images` link table, and tags an `announcement_tags` table, each exactly like its event counterpart. The purge would then release images the way `UPDATE_images_of_purgeable_events.sql` does.
+- **Ordering:** posted lists are ordered by `created_at`. A draft written long before it's posted sorts by when it was written; a `posted_at` column would change that, and is an [open question](../../api/endpoints/announcements.md#open-questions).
 
 ## Older designs
 
@@ -366,9 +381,9 @@ Avoid the July indirection, where every read goes through `current_version_id`.
 
 ## The baseline
 
-[`2026_09_29_baseline_up.sql`](../migrations/schema/2026_09_29_baseline_up.sql) creates every table, loads the six topics, and creates the two views. `clubs.fk_logo_id` and `images.fk_club_id` form a cycle, so `images` is created first and its foreign key to `clubs` is added with one `ALTER` after `clubs` exists. [`_down.sql`](../migrations/schema/2026_09_29_baseline_down.sql) drops the views, drops that foreign key, and drops every table, children first. It destroys all data and is only for rebuilding a local or test database.
+[`2026_09_29_baseline_up.sql`](../migrations/schema/2026_09_29_baseline_up.sql) creates every table, loads the six topics, and creates the three views. `clubs.fk_logo_id` and `images.fk_club_id` form a cycle, so `images` is created first and its foreign key to `clubs` is added with one `ALTER` after `clubs` exists. [`_down.sql`](../migrations/schema/2026_09_29_baseline_down.sql) drops the views, drops that foreign key, and drops every table, children first. It destroys all data and is only for rebuilding a local or test database.
 
-The seed, [`seed/2026_09_29_baseline_seed.sql`](../migrations/seed/2026_09_29_baseline_seed.sql), is development data. It uses explicit ids and times relative to the day it's loaded, so it always has past, ongoing, and upcoming events. It covers drafts (one with no location), a cancelled event, multi-club events, an event with no description, an event soft-deleted 3 days ago (restorable) and one 45 days ago (purgeable), a flyer that's also in its gallery, one photo in two galleries, soft-deleted images, a club with no `club_info`, a club with two owners, and a student with a `NULL` email.
+The seed, [`seed/2026_09_29_baseline_seed.sql`](../migrations/seed/2026_09_29_baseline_seed.sql), is development data. It uses explicit ids and times relative to the day it's loaded, so it always has past, ongoing, and upcoming events. It covers drafts (one with no location), a cancelled event, multi-club events, an event with no description, an event soft-deleted 3 days ago (restorable) and one 45 days ago (purgeable), a flyer that's also in its gallery, one photo in two galleries, soft-deleted images, a club with no `club_info`, a club with two owners, a student with a `NULL` email, and announcements: posted, a draft with no body, one shared by three clubs, one soft-deleted 5 days ago, and one 40 days ago.
 
 ### How it was tested
 

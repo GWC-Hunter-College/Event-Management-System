@@ -125,6 +125,15 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
 | 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
 | 🔴 | POST | `/auth/events/{eventId}/restore` | Restores an event deleted less than 30 days ago (owning club's e-board or owners, or an admin). Proposed; not in the PDF. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidrestore) |
+| **Announcements** (Proposed; not in the PDF) | | | | | | |
+| 🟢 | GET | `/clubs/{clubId}/announcements` | Lists a club's posted announcements, newest first. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncements) |
+| 🟢 | GET | `/announcements/{announcementId}` | Returns one posted announcement. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-announcementsannouncementid) |
+| 🔴 | GET | `/clubs/{clubId}/announcements/drafts` | Lists a club's draft announcements, for its e-board and owners. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) |
+| 🔴 | GET | `/auth/announcements/{announcementId}` | Returns an announcement in either status, for its managers. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-authannouncementsannouncementid) |
+| 🔴 | POST | `/clubs/{clubId}/announcements` | Creates an announcement, optionally shared with other clubs. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-post-clubsclubidannouncements) |
+| 🔴 | PATCH | `/auth/announcements/{announcementId}` | Edits an announcement, or posts a draft (`draft → posted` only). | ⬜ | Later | [announcements.md](endpoints/announcements.md#-patch-authannouncementsannouncementid) |
+| 🔴 | DELETE | `/auth/announcements/{announcementId}` | Deletes an announcement (soft delete). | ⬜ | Later | [announcements.md](endpoints/announcements.md#-delete-authannouncementsannouncementid) |
+| 🔴 | POST | `/auth/announcements/{announcementId}/restore` | Restores an announcement deleted less than 30 days ago. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-post-authannouncementsannouncementidrestore) |
 | **Images** | | | | | | |
 | 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
 | 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
@@ -155,7 +164,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🟢 | GET | `/database/test` | Database connectivity check. Dormant: neither API registers it. | 🟨 | — | [operational.md](endpoints/operational.md#-get-databasetest) |
 
 
-**Totals:** 43 HTTP endpoints and 6 internal functions. `gateway/routes` registers 19 of the endpoints: 18 are deployed on both the dev and prod APIs (12 🟢 and 6 🔴; 14 ✅ and 4 🟨), and `GET /database/test` is dormant. The other 24 endpoints are planned: 21 from the PDF, 1 proposed from the frontend, and 2 from the [decisions](#decisions) (restore and purge). By frontend need: 22 endpoints and functions are **Now**, 22 are **Later**, and 5 are **—**.
+**Totals:** 51 HTTP endpoints and 6 internal functions. `gateway/routes` registers 19 of the endpoints: 18 are deployed on both the dev and prod APIs (12 🟢 and 6 🔴; 14 ✅ and 4 🟨), and `GET /database/test` is dormant. The other 32 endpoints are planned: 21 from the PDF, 1 proposed from the frontend, 2 from the [decisions](#decisions) (restore and purge), and 8 for [announcements](endpoints/announcements.md), for the club page's Announcements tab. By frontend need: 22 endpoints and functions are **Now**, 30 are **Later**, and 5 are **—**.
 
 **Preflight routes:** `POST /clubs/{clubId}/events/{eventId}/thumbnails`, `.../images`, and `.../images/confirm` also register `OPTIONS` against the same Lambda for CORS preflight. Those aren't separate endpoints.
 
@@ -187,7 +196,7 @@ Product decisions taken on 2026-09-29. The proposed contracts they affect are up
 5. **Club topics** come from a fixed list, stored as lowercase keys, at most 3 per club; the UI uppercases them. The design-mode fixtures change to use the same list. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
 6. **Club roles.** Owners and e-board members can edit club info. Only owners can change roles or delete the club. Owners and e-board members can see member emails; regular members can't.
 7. **GWC website.** The site finds its club through a configured club ID.
-8. **Purging is done by admins, on demand.** There's no scheduled job. [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) (🔴, admin) permanently removes events and images deleted **more than 30 days ago**, and the S3 files nothing uses any more.
+8. **Purging is done by admins, on demand.** There's no scheduled job. [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) (🔴, admin) permanently removes events, images, and [announcements](endpoints/announcements.md) deleted **more than 30 days ago**, and the S3 files nothing uses any more.
 9. **Deleted events can be restored for 30 days.** [`POST /auth/events/{eventId}/restore`](endpoints/event-management.md#-post-autheventseventidrestore) (🔴, e-board or owner of the event's **owning** club, or an admin) clears `deleted_at` only when the event was deleted less than 30 days ago. The purge uses the same 30-day cutoff, so nothing restorable is ever purged.
 10. **Date-only list bounds cover whole days in `America/New_York`.** `startDate=2026-10-01` starts at 00:00 on October 1; `endDate=2026-10-31` includes all of October 31, so the range ends before 00:00 on November 1. An event matches if it overlaps the range, so a multi-day event that starts before the range still shows up. Full timestamps with an offset are accepted too. Event start and end times themselves stay full UTC timestamps. See [proposed list parameters](endpoints/events.md#proposed-list-parameters).
 11. **One role per member.** `club_members.role` is `member`, `eboard`, or `owner`. The e-board list includes owners. A club's last owner can't be demoted and can't leave; an owner can leave while the club has another owner.

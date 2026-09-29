@@ -197,6 +197,42 @@ CREATE TABLE `event_images` (
   CONSTRAINT `fk_event_images_image` FOREIGN KEY (`fk_image_id`) REFERENCES `images` (`id`)
 );
 
+-- Announcements: updates a club's e-board posts, modelled on events. status is
+-- draft or posted, and draft -> posted is the only transition. They follow the event
+-- rules for deleted_at: soft delete, 30-day restore, then an admin's purge.
+-- body may be empty on a draft, and posting requires one.
+-- Room to grow the way events did: a flyer is a nullable fk_thumbnail_id to images,
+-- a gallery is an announcement_images link table, and tags are announcement_tags,
+-- each cascading from announcements like their event counterparts.
+CREATE TABLE `announcements` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `fk_author_id` CHAR(36) NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `body` TEXT NULL,
+  `status` ENUM ('draft', 'posted') NOT NULL DEFAULT 'draft',
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` TIMESTAMP NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_announcements_status_created` (`status`, `created_at`),
+  KEY `idx_announcements_author` (`fk_author_id`),
+  KEY `idx_announcements_deleted` (`deleted_at`),
+  CONSTRAINT `fk_announcements_author` FOREIGN KEY (`fk_author_id`) REFERENCES `students` (`id`) ON DELETE SET NULL
+);
+
+-- Clubs an announcement belongs to, with at most one owner club, as events_to_clubs.
+-- One announcement can go to several clubs (HunterHacks for the CS clubs, say).
+CREATE TABLE `announcements_to_clubs` (
+  `fk_announcement_id` INT NOT NULL,
+  `fk_club_id` INT NOT NULL,
+  `club_is_announcement_owner` BOOL NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (`fk_announcement_id`, `fk_club_id`),
+  KEY `idx_announcements_to_clubs_club` (`fk_club_id`),
+  UNIQUE KEY `uq_announcements_to_clubs_one_owner` ((IF(`club_is_announcement_owner`, `fk_announcement_id`, NULL))),
+  CONSTRAINT `fk_announcements_to_clubs_announcement` FOREIGN KEY (`fk_announcement_id`) REFERENCES `announcements` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_announcements_to_clubs_club` FOREIGN KEY (`fk_club_id`) REFERENCES `clubs` (`id`)
+);
+
 -- event_details: one row per event that isn't soft-deleted, with everything the
 -- event object needs. Every event read selects from it, so the soft-delete filter
 -- and the flyer, description, photo count and club columns are written once.
@@ -277,3 +313,35 @@ FROM `clubs` c
 LEFT JOIN `images` logo ON logo.`id` = c.`fk_logo_id`
 LEFT JOIN `club_info` ci ON ci.`fk_club_id` = c.`id`
 LEFT JOIN `verified_clubs` vc ON vc.`fk_club_id` = c.`id`;
+
+-- announcement_details: one row per announcement that isn't soft-deleted, with its
+-- owner club and co-owning clubs, as event_details does for events.
+--   associates is a JSON array of {id, name, logoObjectKey} in no guaranteed order.
+CREATE VIEW `announcement_details` AS
+SELECT
+  a.`id`,
+  a.`fk_author_id`,
+  a.`title`,
+  a.`body`,
+  a.`status`,
+  a.`created_at`,
+  a.`updated_at`,
+  oc.`id` AS `owner_club_id`,
+  oc.`name` AS `owner_club_name`,
+  ologo.`object_key` AS `owner_logo_object_key`,
+  COALESCE(
+    (
+      SELECT JSON_ARRAYAGG(JSON_OBJECT('id', c.`id`, 'name', c.`name`, 'logoObjectKey', li.`object_key`))
+      FROM `announcements_to_clubs` ac
+      JOIN `clubs` c ON c.`id` = ac.`fk_club_id`
+      LEFT JOIN `images` li ON li.`id` = c.`fk_logo_id`
+      WHERE ac.`fk_announcement_id` = a.`id`
+        AND ac.`club_is_announcement_owner` = FALSE
+    ),
+    JSON_ARRAY()
+  ) AS `associates`
+FROM `announcements` a
+LEFT JOIN `announcements_to_clubs` oac ON oac.`fk_announcement_id` = a.`id` AND oac.`club_is_announcement_owner` = TRUE
+LEFT JOIN `clubs` oc ON oc.`id` = oac.`fk_club_id`
+LEFT JOIN `images` ologo ON ologo.`id` = oc.`fk_logo_id`
+WHERE a.`deleted_at` IS NULL;

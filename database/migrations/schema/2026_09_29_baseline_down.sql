@@ -3,9 +3,15 @@
 -- Destroys all data. Only for rebuilding a local or test database.
 -- The images-to-clubs foreign key is dropped first, because it closes a cycle with clubs.
 
+DROP VIEW IF EXISTS `announcement_details`;
+
 DROP VIEW IF EXISTS `club_details`;
 
 DROP VIEW IF EXISTS `event_details`;
+
+DROP TABLE IF EXISTS `announcements_to_clubs`;
+
+DROP TABLE IF EXISTS `announcements`;
 
 DROP TABLE IF EXISTS `event_images`;
 

@@ -45,6 +45,10 @@ api/
 │       │   ├── list/
 │       │   ├── drafts/
 │       │   └── create/
+│       ├── announcements/
+│       │   ├── list/
+│       │   ├── drafts/
+│       │   └── create/
 │       ├── verification/
 │       │   ├── create/
 │       │   └── delete/
@@ -57,7 +61,16 @@ api/
 │       ├── get/
 │       └── images/
 │           └── get/
+├── announcements/
+│   └── {announcementId}/
+│       └── get/
 ├── auth/
+│   ├── announcements/
+│   │   └── {announcementId}/
+│   │       ├── get/
+│   │       ├── update/
+│   │       ├── delete/
+│   │       └── restore/
 │   └── events/
 │       └── {eventId}/
 │           ├── get/
@@ -169,7 +182,15 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`GET /admins/{studentId}`](endpoints/admins.md#-get-adminsstudentid) | `api/admins/{studentId}/get/` | `database/queries/admins/get/` | Partial; the schema intent is clear, but the stub isn't parameterized, working SQL. |
 | [`POST /admins`](endpoints/admins.md#-post-admins) | `api/admins/create/` | `database/queries/admins/create/` | N/A until built. |
 | [`DELETE /admins/{studentId}`](endpoints/admins.md#-delete-adminsstudentid) | `api/admins/{studentId}/delete/` | `database/queries/admins/delete/` | Partial; only obsolete SQL-shaped notes exist. |
-| [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) | `api/admins/purge/` | `database/queries/events/purge/` and `database/queries/images/purge/`, plus the storage adapter for S3 deletes. | N/A until built. |
+| [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) | `api/admins/purge/` | `database/queries/events/purge/`, `database/queries/images/purge/`, and `database/queries/announcements/purge/`, plus the storage adapter for S3 deletes. | N/A until built. |
+| [`GET /clubs/{clubId}/announcements`](endpoints/announcements.md#-get-clubsclubidannouncements) | `api/clubs/{clubId}/announcements/list/` | `database/queries/clubs/announcements/list/` | N/A until built. |
+| [`GET /announcements/{announcementId}`](endpoints/announcements.md#-get-announcementsannouncementid) | `api/announcements/{announcementId}/get/` | `database/queries/announcements/read/` | N/A until built. |
+| [`GET /clubs/{clubId}/announcements/drafts`](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) | `api/clubs/{clubId}/announcements/drafts/get/` | `database/queries/clubs/announcements/drafts/` | N/A until built. |
+| [`GET /auth/announcements/{announcementId}`](endpoints/announcements.md#-get-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/get/` | `database/queries/announcements/read/` and `database/queries/authorization/announcements/can_manage/` | N/A until built. |
+| [`POST /clubs/{clubId}/announcements`](endpoints/announcements.md#-post-clubsclubidannouncements) | `api/clubs/{clubId}/announcements/create/` | `database/queries/announcements/create/` | N/A until built. |
+| [`PATCH /auth/announcements/{announcementId}`](endpoints/announcements.md#-patch-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/update/` | `database/queries/announcements/update/` | N/A until built. |
+| [`DELETE /auth/announcements/{announcementId}`](endpoints/announcements.md#-delete-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/delete/` | `database/queries/announcements/delete/` | N/A until built. |
+| [`POST /auth/announcements/{announcementId}/restore`](endpoints/announcements.md#-post-authannouncementsannouncementidrestore) | `api/auth/announcements/{announcementId}/restore/` | `database/queries/announcements/restore/` and `database/queries/authorization/announcements/manages_owner_club/` | N/A until built. |
 
 ### Operational
 

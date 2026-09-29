@@ -1,61 +1,63 @@
-# Database migration map
+# Database module
 
-This directory now contains the Phase 1 source-only extraction of the provider-independent application database module: five unchanged model files, 21 unchanged active SQL queries, eight schema/database history files, one seed file, and an independent Go client. The active implementation and every caller remain in [`infrastructure/legacy/`](../infrastructure/legacy/); no migration runner or API cutover is implemented here.
+The provider-independent MySQL database module: schema history, database-facing models, the application's SQL, and a Go client. It holds five model files and 21 active SQL queries copied unchanged from legacy, eight schema/database history files, one seed file, and an independent Go client. Nothing calls it: every handler and caller still runs from [`infrastructure/legacy/`](../infrastructure/legacy/), and the module has no migration runner.
 
-## Boundary and portability principle
+This file is also the map of every query the API needs, as [29 query groups](#query-groups), each linked to its SQL, its callers, and the endpoints it serves.
 
-**MySQL is the application database technology. Amazon RDS is only the current hosting environment.** The same schema and query behavior should eventually be usable with:
+## Boundary
+
+**MySQL is the application database technology. Amazon RDS is only the current hosting environment.** The schema and query behavior target any MySQL host:
 
 - Amazon RDS for MySQL;
 - MySQL on Amazon EC2;
 - another compatible MySQL host; and
 - local MySQL.
 
-Provider independence here means independence from AWS hosting, credentials, networking, and deployment APIs. It does not mean converting the current MySQL schema or SQL dialect to a different database engine during this migration.
+Provider independence here means independence from AWS hosting, credentials, networking, and deployment APIs. It doesn't mean converting the MySQL schema or SQL dialect to another database engine.
 
-The future module should own MySQL schema history, migrations, query behavior, transactions, and database-facing models. AWS Secrets Manager lookup, RDS endpoints, VPC attachment, Lambda configuration, and IAM permissions belong behind adapters in the API/infrastructure boundary.
+The module owns MySQL schema history, migrations, query behavior, transactions, and database-facing models. AWS Secrets Manager lookup, RDS endpoints, VPC attachment, Lambda configuration, and IAM permissions aren't in it; they sit behind adapters on the API/infrastructure side.
 
-## Evidence and interpretation rules
+## Sources
 
-The current legacy code is authoritative for status. This inventory was checked against:
+The legacy code is authoritative for status. The query groups were checked against:
 
 - the initializer's selected DDL and seed migrations;
 - all 21 embedded application SQL files under [`utils/query_client/queries/`](../infrastructure/legacy/utils/query_client/queries/);
 - every current handler query call;
 - query-client connection, loading, and transaction code;
 - inactive endpoint stub SQL; and
-- schema-implied operations required by the historical endpoint plan.
+- schema-implied operations the PDF's endpoint list needs.
 
 The historical `GWC Website Documentation.pdf` supplied entity and endpoint intent only. Its older conceptual schema, July-era SQL assumptions, and project-management checkmarks do not override the current November DDL or current callers.
 
-## Query migration status legend
+## Status legend
 
-- ✅ **Legacy query exists and can be ported** — SQL and its callers are identifiable, even when the caller has a separately documented API/auth concern.
+- ✅ **SQL exists** — the SQL and its callers are identifiable and portable, even when the caller has a separately documented API/auth issue.
 - 🟨 **Partial** — query behavior is broken, missing one required part, spread across stale/inactive sources, or only reusable primitives exist.
-- ⬜ **Query required but not found** — the current schema or planned endpoint needs the behavior, but no implementation was found.
-- ❓ **Manual review** — product/data semantics must be decided before the query group can be defined.
+- ⬜ **No SQL** — the schema or a planned endpoint needs the behavior, but no implementation exists.
+- ❓ **Needs a decision** — product/data semantics have to be decided before the query group can be defined.
 
-## Migration summary
+## Query group summary
 
-This checklist contains **29 meaningful query groups**:
+There are **29 query groups**:
 
 | Status | Count |
 | --- | ---: |
-| ✅ Legacy query exists and can be ported | 14 |
+| ✅ SQL exists | 14 |
 | 🟨 Partial or spread across sources | 7 |
-| ⬜ Query still required | 7 |
-| ❓ Manual review | 1 |
+| ⬜ No SQL | 7 |
+| ❓ Needs a decision | 1 |
 | **Total** | **29** |
 
-The current query surface accounts for 16 responsibilities: 14 ✅ groups and 2 🟨 groups. The 21 embedded SQL files form 15 of those groups; the sixteenth is the active event-image read whose required SQL file is absent. The other 13 groups capture historical/stubbed needs, schema gaps, and one unresolved ownership decision.
+The current query surface accounts for 16 responsibilities: 14 ✅ groups and 2 🟨 groups. The 21 embedded SQL files form 15 of those groups; the sixteenth is the active event-image read whose required SQL file is absent. The other 13 groups cover needs from the PDF or inactive stubs, schema gaps, and one unresolved ownership decision.
 
-No query-specific unit or integration tests were found in legacy. Phase 1 adds offline query-loading, transaction, and model-scan unit tests in this module. Migration readiness still means “identifiable for porting,” not “runtime behavior has been proven” against MySQL.
+Legacy has no query-specific unit or integration tests. This module has offline query-loading, transaction, and model-scan unit tests. A ✅ means the SQL is identifiable and portable, not that its runtime behavior has been proven against MySQL.
 
-The existing SQL for groups 1–15 is now copied at the proposed paths below, including the known broken event-creation SQL. Inventory statuses and **planned** annotations continue to describe behavior and caller migration, not just file presence. Missing queries, inactive stubs, SQL repairs, and application transaction changes remain deferred.
+The SQL for groups 1–15 is copied to its module path, including the known broken event-creation SQL. A group's status describes its behavior and callers, not just whether a file exists. Missing queries, inactive stubs, SQL repairs, and application transaction changes aren't in the module.
 
-## Planned database directory structure
+## Directory layout
 
-The following tree remains the target structure. Phase 1 creates only paths containing copied SQL, plus `models/`, `client/`, and the independent `go.mod`/`go.sum`; unimplemented query paths remain planned. No empty implementation directories should be created until their first migrated behavior is ready.
+The module's layout. Only the paths holding copied SQL exist, plus `models/`, `client/`, and the independent `go.mod`/`go.sum`. Every other query path is created with the first behavior it holds, so there are no empty directories.
 
 ```text
 database/
@@ -118,7 +120,7 @@ database/
 └── client/
 ```
 
-Route-shaped query paths should help developers find behavior, not force duplication. The public and authorized event routes should share event-read queries and compose them with visibility/authorization policies. See the [planned API tree](../api/MIGRATION.md#planned-api-directory-structure).
+Route-shaped query paths are for finding behavior, not a reason to duplicate SQL: the public and authorized event routes share the event-read queries and compose them with visibility and authorization policies. See the [API module layout](../api/LAYOUT.md#directory-layout).
 
 ## Current authoritative schema
 
@@ -154,7 +156,7 @@ The current initializer at [`lambda/internal/database/init/main.go`](../infrastr
 2. applies the November core DDL to both databases; and
 3. applies [`09_14_2025_seed_tables.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/09_14_2025_seed_tables.sql) to `STAGING`.
 
-The runner splits files on semicolons and executes statements without a migration-history table or encompassing transaction. Foreign-key ALTER statements and seed inserts can leave a partially initialized database, and the seed is not safely repeatable. There is no down migration matching the current November DDL. These are migration-runner concerns, not reasons to redesign the schema in this source-only phase. The copied migration files are history only; none has been executed.
+The runner splits files on semicolons and executes statements without a migration-history table or encompassing transaction. Foreign-key ALTER statements and seed inserts can leave a partially initialized database, and the seed is not safely repeatable. There is no down migration matching the current November DDL. These are migration-runner issues, not schema defects. The module's copies of the migration files are history only; the module has never executed one.
 
 ## Shared application query access
 
@@ -166,17 +168,17 @@ Current access is implemented by [`query_client.go`](../infrastructure/legacy/ut
 - `loadSQLFromFile` allocates exactly 4096 bytes and ignores the byte count returned by `Read`, so every query risks trailing null bytes and queries over 4 KiB risk truncation.
 - `Get`, `Select`, and `Exec` do not use context-aware database methods.
 - `NewClient` accepts but does not apply `dbName`; active code uses `NewClientFromHost` instead.
-- the unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name; do not port that unvalidated identifier construction.
+- the unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name, an unvalidated identifier; the module doesn't include it.
 
-The new [`database/client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. Callers supply credentials, `Net`/`Addr`, `DBName`, and TLS options using the MySQL driver's configuration defaults. AWS secret retrieval and RDS endpoint resolution remain outside this module; no AWS adapter or legacy caller is changed.
+The new [`database/client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. Callers supply credentials, `Net`/`Addr`, `DBName`, and TLS options using the MySQL driver's configuration defaults. AWS secret retrieval and RDS endpoint resolution are outside this module. There's no AWS adapter, and no legacy caller uses the module.
 
 [`queries.Load`](queries/queries.go) embeds only the 21 copied application queries and reads their complete bytes. `ExecMulti` commits a statement batch; `ExecInsertQuery` also prepends the initial insert ID to selected later statements. Both propagate commit/rollback failures and return results only after successful commit. No application workflow is recomposed. Raw-row `Query`/`QueryRow` APIs, the unsafe `ChangeDatabase`/`QueryMulti` helpers, and initialization/migration execution are not ported.
 
-Current SQL intentionally uses MySQL features such as `AUTO_INCREMENT`, `ENUM`, `BOOL`, backticks, `ON DUPLICATE KEY UPDATE`, and MySQL nullable/unique semantics. Preserve those semantics unless a separate database redesign is approved.
+Current SQL intentionally uses MySQL features such as `AUTO_INCREMENT`, `ENUM`, `BOOL`, backticks, `ON DUPLICATE KEY UPDATE`, and MySQL nullable/unique semantics. The module keeps those semantics; changing them would be a database redesign.
 
-The DDL also permits null in many non-primary-key columns while several current Go club/event model fields use non-pointer values. Query migration needs scan-parity fixtures beyond the specifically known nullable-student-email case.
+The DDL also permits null in many non-primary-key columns while several current Go club/event model fields use non-pointer values. Moving a query to the module needs scan-parity fixtures beyond the known nullable-student-email case.
 
-## Query migration inventory
+## Query groups
 
 ### 1. Student existence and upsert
 
@@ -192,11 +194,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy callers:** [`utils/auth/ensure_student.go`](../infrastructure/legacy/utils/auth/ensure_student.go) and [`lambda/internal/auth/postConfirm/upsert.go`](../infrastructure/legacy/lambda/internal/auth/postConfirm/upsert.go).
 
-**Proposed future path:** `database/queries/students/ensure/` (**planned**).
+**Module path:** `database/queries/students/ensure/` (SQL copied).
 
 **Portable:** Yes. Preserve MySQL `ON DUPLICATE KEY UPDATE`; inject connection credentials rather than loading AWS Secrets Manager in the query module.
 
-**Migration notes:** The existence check and upsert are separate request-time operations, but the upsert remains safe under a race. Decide whether request-time synchronization should update a changed email when the row already exists; current `RequireStudent` does not.
+**Notes:** The existence check and upsert are separate request-time operations, but the upsert remains safe under a race. Request-time synchronization doesn't update a changed email when the row already exists; whether it should is an [open question](#open-questions).
 
 ### 2. Current student
 
@@ -212,11 +214,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/me/get.go`](../infrastructure/legacy/lambda/api/me/get.go).
 
-**Proposed future path:** `database/queries/me/get/` (**planned**).
+**Module path:** `database/queries/me/get/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** `students.email` is nullable, but the current Go model uses a non-nullable string. Phase 1 preserves that model exactly and adds a parity test documenting the existing NULL scan failure. Choose an explicit null representation before API cutover.
+**Notes:** `students.email` is nullable, but the current Go model uses a non-nullable string. The module's copy preserves that model exactly, and a parity test documents the NULL scan failure. An explicit null representation is needed before API cutover.
 
 ### 3. Current student's clubs and roles
 
@@ -232,11 +234,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/me/clubs/get.go`](../infrastructure/legacy/lambda/api/me/clubs/get.go).
 
-**Proposed future path:** `database/queries/me/clubs/list/` (**planned**).
+**Module path:** `database/queries/me/clubs/list/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The selected `images.object_key` is exposed by the current API as `thumbnailUrl`. Keep storage URL generation outside the query, and decide at the API layer whether to preserve that naming quirk.
+**Notes:** The selected `images.object_key` is exposed by the current API as `thumbnailUrl`. Storage URL generation stays outside the query; whether to keep that naming quirk is an API-layer decision.
 
 ### 4. Current student's events
 
@@ -252,11 +254,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/me/events/get.go`](../infrastructure/legacy/lambda/api/me/events/get.go).
 
-**Proposed future path:** `database/queries/me/events/list/` (**planned**).
+**Module path:** `database/queries/me/events/list/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** SQL applies strict date bounds and paginates joined association rows, not distinct events. It returns only linked clubs the student joined, which can omit the owner club from an otherwise qualifying event. Preserve this only through explicit contract tests.
+**Notes:** SQL applies strict date bounds and paginates joined association rows, not distinct events. It returns only linked clubs the student joined, which can omit the owner club from an otherwise qualifying event. Keeping this behavior needs explicit contract tests.
 
 ### 5. Club list and verified filter
 
@@ -272,11 +274,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/get.go`](../infrastructure/legacy/lambda/api/clubs/get.go).
 
-**Proposed future path:** `database/queries/clubs/list/` (**planned**).
+**Module path:** `database/queries/clubs/list/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The boolean argument implements “all versus verified-only” in one query. The route accepts only exact `true`/`TRUE`; query code should not absorb HTTP string parsing.
+**Notes:** The boolean argument implements “all versus verified-only” in one query. The route accepts only exact `true`/`TRUE`; HTTP string parsing stays in the handler, not the query code.
 
 ### 6. Club detail
 
@@ -292,11 +294,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/get.go).
 
-**Proposed future path:** `database/queries/clubs/get/` (**planned**).
+**Module path:** `database/queries/clubs/get/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** Keep HTTP path validation and not-found response mapping outside the query. Optional `club_info` and logo rows must remain nullable in the data model.
+**Notes:** Keep HTTP path validation and not-found response mapping outside the query. Optional `club_info` and logo rows must remain nullable in the data model.
 
 ### 7. Club creation
 
@@ -312,11 +314,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller/transaction:** [`lambda/api/clubs/post/post.go`](../infrastructure/legacy/lambda/api/clubs/post/post.go) through [`QueryClient.ExecInsertQuery`](../infrastructure/legacy/utils/query_client/query_client.go).
 
-**Proposed future path:** `database/queries/clubs/create/` (**planned**).
+**Module path:** `database/queries/clubs/create/` (SQL copied).
 
 **Portable:** Yes; retain a MySQL transaction and last-insert-ID behavior behind a database interface.
 
-**Migration notes:** This transaction does **not** create an owner membership or verification row. That unresolved behavior is tracked as [group 29](#29-club-creator-ownership).
+**Notes:** This transaction does **not** create an owner membership or verification row. That unresolved behavior is tracked as [group 29](#29-club-creator-ownership).
 
 ### 8. Join caller to club
 
@@ -332,11 +334,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/members/me/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go).
 
-**Proposed future path:** Shared `database/queries/clubs/members/create/`, with caller-scoping enforced by the API service (**planned**).
+**Module path:** Shared `database/queries/clubs/members/create/`, with caller-scoping enforced by the API service (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The query accepts a student ID parameter and can be reused for an authorized “add specified member” operation, but the current handler supplies only the verified caller and always assigns both role flags false. It does not require a verified club.
+**Notes:** The query accepts a student ID parameter and can be reused for an authorized “add specified member” operation, but the current handler supplies only the verified caller and always assigns both role flags false. It does not require a verified club.
 
 ### 9. Leave caller's club
 
@@ -352,11 +354,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/members/me/delete/delete.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go).
 
-**Proposed future path:** `database/queries/clubs/members/leave/` (**planned**).
+**Module path:** `database/queries/clubs/members/leave/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The SQL owner guard is valid behavior, but the active route never supplies the JWT context its handler requires. That is an API wiring defect, not a missing query. Also review nullable `member_is_owner`: `= FALSE` does not match null.
+**Notes:** The SQL owner guard is valid behavior, but the active route never supplies the JWT context its handler requires. That is an API wiring defect, not a missing query. Also review nullable `member_is_owner`: `= FALSE` does not match null.
 
 ### 10. Club event list
 
@@ -364,7 +366,7 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Purpose:** Reads status/date-filtered events linked to one club, with descriptions and club-logo object keys.
 
-**Used by:** Public [`GET /clubs/{clubId}/events`](../api/endpoints/club-events.md#-get-clubsclubidevents); its status parameter can also support a future authorized draft list.
+**Used by:** Public [`GET /clubs/{clubId}/events`](../api/endpoints/club-events.md#-get-clubsclubidevents); its status parameter also serves the planned authorized draft list ([group 21](#21-club-draft-events)).
 
 **Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
 
@@ -372,11 +374,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/events/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go).
 
-**Proposed future path:** `database/queries/clubs/events/list/` (**planned**).
+**Module path:** `database/queries/clubs/events/list/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The current handler supplies `posted`, `%`, strict date bounds, limit, and offset. SQL paginates joined rows, and filtering to the requested club prevents the response from reconstructing all event associations.
+**Notes:** The current handler supplies `posted`, `%`, strict date bounds, limit, and offset. SQL paginates joined rows, and filtering to the requested club prevents the response from reconstructing all event associations.
 
 ### 11. Public and composite event read
 
@@ -392,11 +394,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy callers:** [`lambda/api/events/get.go`](../infrastructure/legacy/lambda/api/events/get.go) and [`lambda/api/events/eventId/get.go`](../infrastructure/legacy/lambda/api/events/eventId/get.go).
 
-**Proposed future path:** Shared `database/queries/events/read/`, with list/get wrappers rather than duplicated SQL (**planned**).
+**Module path:** Shared `database/queries/events/read/`, with list/get wrappers rather than duplicated SQL (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The query uses `LIKE` for an integer event ID, strict date bounds, row-level pagination, and no `deleted_at` predicate. The detail handler caps joined rows at 100. Historical stub event/description SQL is superseded by this composite query and should not be migrated independently.
+**Notes:** The query uses `LIKE` for an integer event ID, strict date bounds, row-level pagination, and no `deleted_at` predicate. The detail handler caps joined rows at 100. The inactive stub event/description SQL is superseded by this composite query and isn't in the module.
 
 ### 12. Create event draft
 
@@ -412,11 +414,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/events/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go).
 
-**Proposed future path:** `database/queries/events/create/` as one transaction (**planned**).
+**Module path:** `database/queries/events/create/` as one transaction (SQL copied).
 
 **Portable:** Partial.
 
-**Migration notes:** `INSERT_event.sql` names 11 columns but supplies 10 values and has no value expression for `rsvp_link` while the handler passes seven arguments. `INSERT_event_description.sql` has a trailing comma in its column list. The initial event insert uses `Exec` before link/description `ExecMulti`, so a later failure can orphan the draft. Phase 1 preserves these SQL bytes as source copies only. Repair and test this behavior before API cutover; do not activate the copied behavior unchanged.
+**Notes:** `INSERT_event.sql` names 11 columns but supplies 10 values and has no value expression for `rsvp_link` while the handler passes seven arguments. `INSERT_event_description.sql` has a trailing comma in its column list. The initial event insert uses `Exec` before link/description `ExecMulti`, so a later failure can orphan the draft. The module's copy preserves these SQL bytes unchanged, so it's broken too. It needs repair and tests before any caller uses it.
 
 ### 13. Club authorization
 
@@ -432,11 +434,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy callers/helpers:** [`utils/auth/club_authorization.go`](../infrastructure/legacy/utils/auth/club_authorization.go) and a duplicate [`lambda/internal` package](../infrastructure/legacy/lambda/internal/auth/club_authorization/club_authorization.go); neither is called by active handlers.
 
-**Proposed future path:** `database/queries/authorization/clubs/can_manage/` (**planned**).
+**Module path:** `database/queries/authorization/clubs/can_manage/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** Port one implementation and expose it through a shared application authorization policy. Owner-only operations such as historical role promotion require a stricter query/policy than this e-board-or-owner check.
+**Notes:** Port one implementation and expose it through a shared application authorization policy. Owner-only operations such as historical role promotion require a stricter query/policy than this e-board-or-owner check.
 
 ### 14. Event authorization
 
@@ -452,11 +454,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy callers/helpers:** [`utils/auth/event_authorization.go`](../infrastructure/legacy/utils/auth/event_authorization.go) and duplicate [`lambda/internal` package](../infrastructure/legacy/lambda/internal/auth/event_authorization/event_authorization.go); neither is called by active handlers.
 
-**Proposed future path:** `database/queries/authorization/events/can_manage/` (**planned**).
+**Module path:** `database/queries/authorization/events/can_manage/` (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The “any associated club” rule matches the historical rationale for `/auth/events/{eventId}`. Confirm whether owner-club authority, event authorship, or admins should have different precedence before migration.
+**Notes:** The “any associated club” rule matches the historical rationale for `/auth/events/{eventId}`. Whether owner-club authority, event authorship, or admins take precedence is an [open question](#open-questions).
 
 ### 15. Event-image metadata confirmation
 
@@ -472,11 +474,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/events/images/confirm/post.go`](../infrastructure/legacy/lambda/api/clubs/events/images/confirm/post.go).
 
-**Proposed future path:** `database/queries/events/images/confirm/`, reusing a shared image-metadata insert primitive (**planned**).
+**Module path:** `database/queries/events/images/confirm/`, reusing a shared image-metadata insert primitive (SQL copied).
 
 **Portable:** Yes.
 
-**Migration notes:** The current handler performs two independent `Exec` calls, so a failed association leaves an orphan `images` row. It trusts client-provided identifiers/keys and does not check object existence. Move both database writes into one transaction; keep storage verification in the application/storage adapter. The handler also closes a package-level client after each request, which can break warm Lambda reuse.
+**Notes:** The current handler performs two independent `Exec` calls, so a failed association leaves an orphan `images` row. It trusts client-provided identifiers/keys and does not check object existence. Both database writes belong in one transaction; storage verification belongs in the application/storage adapter. The handler also closes a package-level client after each request, which can break warm Lambda reuse.
 
 ### 16. Event-image list
 
@@ -492,11 +494,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/events/images/get/get.go`](../infrastructure/legacy/lambda/api/clubs/events/images/get/get.go).
 
-**Proposed future path:** Shared `database/queries/events/images/list/` (**planned**).
+**Module path:** Shared `database/queries/events/images/list/` (not created).
 
 **Portable:** Partial.
 
-**Migration notes:** Define and test the selected fields against the handler's nested `sqlx` scan shape. The handler also closes its package-level database connection after every request, risking failure on warm Lambda reuse. Posted-versus-draft visibility and URL signing are API/policy/storage concerns, not reasons to duplicate the metadata query.
+**Notes:** Define and test the selected fields against the handler's nested `sqlx` scan shape. The handler also closes its package-level database connection after every request, risking failure on warm Lambda reuse. Posted-versus-draft visibility and URL signing are API/policy/storage concerns, not reasons to duplicate the metadata query.
 
 ### 17. My e-board clubs
 
@@ -512,11 +514,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** Hard-coded inactive [`stub/lambda/me/clubs/eboard/get.go`](../infrastructure/legacy/stub/lambda/me/clubs/eboard/get.go).
 
-**Proposed future path:** `database/queries/me/clubs/eboard/list/`, or reuse group 3 with a role filter (**planned**).
+**Module path:** `database/queries/me/clubs/eboard/list/`, or reuse group 3 with a role filter (not created).
 
 **Portable:** Partial.
 
-**Migration notes:** The stub SQL selects student IDs rather than clubs and lacks parentheses around its `AND`/`OR` role condition. Prefer filtering/reusing the current club-and-role query over porting this SQL.
+**Notes:** The stub SQL selects student IDs rather than clubs and lacks parentheses around its `AND`/`OR` role condition. Prefer filtering/reusing the current club-and-role query over porting this SQL.
 
 ### 18. Club member and e-board listing
 
@@ -530,11 +532,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** None; only placeholder `.txt` files exist under [`stub/lambda/clubs/clubId/members/`](../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
 
-**Proposed future path:** Shared `database/queries/clubs/members/list/` with an explicit role filter (**planned**).
+**Module path:** Shared `database/queries/clubs/members/list/` with an explicit role filter (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** Define visibility, profile fields, pagination, and ordering before implementation. Do not create separate duplicated SQL for members and e-board if one filtered query suffices.
+**Notes:** Define visibility, profile fields, pagination, and ordering before implementation. Do not create separate duplicated SQL for members and e-board if one filtered query suffices.
 
 ### 19. Add a specified club member
 
@@ -550,11 +552,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** Only the self-join handler [`lambda/api/clubs/clubId/members/me/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go).
 
-**Proposed future path:** Shared `database/queries/clubs/members/create/` with API-level caller/target authorization (**planned**).
+**Module path:** Shared `database/queries/clubs/members/create/` with API-level caller/target authorization (SQL copied, shared with group 8).
 
 **Portable:** Partial; SQL is portable, endpoint/policy behavior is missing.
 
-**Migration notes:** Define who can add another student, how the target is identified, and whether initial roles can be supplied. Do not let a route body bypass caller/owner policy.
+**Notes:** Define who can add another student, how the target is identified, and whether initial roles can be supplied. Do not let a route body bypass caller/owner policy.
 
 ### 20. Update member roles
 
@@ -568,11 +570,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** No embedded application `UPDATE club_members` query or active handler found. A local [`stub/environment/populate.sql`](../infrastructure/legacy/stub/environment/populate/populate.sql) fixture contains hard-coded UPDATE statements but is not endpoint behavior.
 
-**Proposed future path:** `database/queries/clubs/members/update_role/` (**planned**).
+**Module path:** `database/queries/clubs/members/update_role/` (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** The historical owner-only rule is stricter than the current club authorization query. Define invariants for one/multiple owners, self-promotion, self-demotion, and nullable role values.
+**Notes:** The historical owner-only rule is stricter than the current club authorization query. Define invariants for one/multiple owners, self-promotion, self-demotion, and nullable role values.
 
 ### 21. Club draft events
 
@@ -588,11 +590,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** [`lambda/api/clubs/clubId/events/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go) for public posted reads only.
 
-**Proposed future path:** Reuse `database/queries/clubs/events/list/`; pass an application-approved status after club authorization (**planned**).
+**Module path:** Reuse `database/queries/clubs/events/list/`; pass an application-approved status after club authorization (SQL copied, shared with group 10).
 
 **Portable:** Partial.
 
-**Migration notes:** Do not expose the query's status argument directly to an unauthenticated caller.
+**Notes:** Do not expose the query's status argument directly to an unauthenticated caller.
 
 ### 22. Admin CRUD
 
@@ -608,11 +610,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** None. No list/create SQL or active handler exists.
 
-**Proposed future path:** `database/queries/admins/{list,get,create,delete}/` plus a reusable admin check (**planned**).
+**Module path:** `database/queries/admins/{list,get,create,delete}/` plus a reusable admin check (not created).
 
 **Portable:** Partial.
 
-**Migration notes:** Both stubs hardcode integer ID `2`, while the current schema uses Cognito `CHAR(36)` student IDs. Treat the stubs as intent only. Admin bootstrap and last-admin rules belong in application policy/transactions.
+**Notes:** Both stubs hardcode integer ID `2`, while the current schema uses Cognito `CHAR(36)` student IDs. Treat the stubs as intent only. Admin bootstrap and last-admin rules belong in application policy/transactions.
 
 ### 23. Club verification writes
 
@@ -626,11 +628,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** No insert/delete query or handler. Group 5 reads verification state only.
 
-**Proposed future path:** `database/queries/clubs/verification/create/` and `delete/` (**planned**).
+**Module path:** `database/queries/clubs/verification/create/` and `delete/` (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** Define duplicate/missing-row idempotency and the admin/club-administration policy outside the query.
+**Notes:** Define duplicate/missing-row idempotency and the admin/club-administration policy outside the query.
 
 ### 24. Authorized event read
 
@@ -646,11 +648,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy caller:** No composed handler; public event detail hardcodes `posted` and role helper is unused.
 
-**Proposed future path:** Reuse `database/queries/events/read/` plus `database/queries/authorization/events/can_manage/` (**planned**).
+**Module path:** Reuse `database/queries/events/read/` plus `database/queries/authorization/events/can_manage/` (both SQL copied; nothing composes them).
 
 **Portable:** Partial.
 
-**Migration notes:** Keep authorization and read primitives reusable, but execute them through one application policy that avoids time-of-check/time-of-use ambiguity where material. Define which event statuses authorized callers may read.
+**Notes:** Keep authorization and read primitives reusable, but execute them through one application policy that avoids time-of-check/time-of-use ambiguity where material. Define which event statuses authorized callers may read.
 
 ### 25. Event update and publish
 
@@ -664,11 +666,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** No event `UPDATE` SQL or patch handler found.
 
-**Proposed future path:** `database/queries/events/update/` as a transaction assembled from reusable field-specific statements (**planned**).
+**Module path:** `database/queries/events/update/` as a transaction assembled from reusable field-specific statements (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** Define patch semantics, allowed fields, status transitions, timestamp updates, associate-club authority, and concurrency behavior before SQL is written. Current event creation always produces `drafted`, so publication cannot occur through the active API.
+**Notes:** Define patch semantics, allowed fields, status transitions, timestamp updates, associate-club authority, and concurrency behavior before SQL is written. Event creation always produces `drafted`, so nothing can publish an event through the deployed API.
 
 ### 26. Event deletion
 
@@ -682,11 +684,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** No archive/delete SQL or handler found.
 
-**Proposed future path:** `database/queries/events/delete/` (**planned**).
+**Module path:** `database/queries/events/delete/` (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** The schema offers both `status='archived'` and nullable `deleted_at`; current reads filter status but not `deleted_at`. Foreign keys have no documented cascade policy. Choose soft-delete/read behavior and storage cleanup before implementing a transaction.
+**Notes:** The schema offers both `status='archived'` and nullable `deleted_at`; current reads filter status but not `deleted_at`. Foreign keys have no documented cascade policy. Choose soft-delete/read behavior and storage cleanup before implementing a transaction.
 
 ### 27. Club and event thumbnail metadata assignment
 
@@ -700,11 +702,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** Presign handlers exist, and group 15 provides a reusable image insert, but no thumbnail confirmation handler or FK-update SQL exists.
 
-**Proposed future path:** `database/queries/clubs/thumbnails/confirm/` and `database/queries/events/thumbnails/confirm/`, sharing an image insert primitive (**planned**).
+**Module path:** `database/queries/clubs/thumbnails/confirm/` and `database/queries/events/thumbnails/confirm/`, sharing an image insert primitive (not created).
 
 **Portable:** N/A until implemented as complete transactions.
 
-**Migration notes:** Define replacement semantics and old-image cleanup. Both thumbnail foreign keys are unique, so duplicate/reassignment behavior and transaction ordering must be tested.
+**Notes:** Define replacement semantics and old-image cleanup. Both thumbnail foreign keys are unique, so duplicate/reassignment behavior and transaction ordering must be tested.
 
 ### 28. Image deletion
 
@@ -718,17 +720,17 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** No deletion SQL, handler, or storage cleanup flow found.
 
-**Proposed future path:** `database/queries/images/delete/`, with storage deletion behind the API's storage adapter (**planned**).
+**Module path:** `database/queries/images/delete/`, with storage deletion behind the API's storage adapter (not created).
 
 **Portable:** N/A until implemented.
 
-**Migration notes:** Define whether database unlink/delete precedes object deletion, how retries recover partial failure, whether shared images are allowed, and how orphaned uploads are collected. S3 operations themselves do not belong in this database module.
+**Notes:** Define whether database unlink/delete precedes object deletion, how retries recover partial failure, whether shared images are allowed, and how orphaned uploads are collected. S3 operations themselves do not belong in this database module.
 
 ### 29. Club creator ownership
 
 **Status:** ❓ Manual product/data review required.
 
-**Purpose:** Determines whether creating a club should atomically make the authenticated creator its owner.
+**Purpose:** Would determine whether creating a club atomically makes the authenticated creator its owner.
 
 **Used by:** [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs) and subsequent club-management authorization.
 
@@ -736,11 +738,11 @@ The DDL also permits null in many non-primary-key columns while several current 
 
 **Legacy query/caller:** Group 7 creates `clubs` and `club_info`; the handler ensures the student exists but never passes `sub` into the transaction or inserts an owner membership. Seed data demonstrates owner memberships, but not the intended creation rule.
 
-**Proposed future path:** If approved, extend the `database/queries/clubs/create/` transaction rather than adding a disconnected follow-up (**planned**).
+**Module path:** If approved, extend the `database/queries/clubs/create/` transaction rather than adding a disconnected follow-up (group 7's SQL copied; no ownership insert).
 
 **Portable:** Unknown until the rule is decided.
 
-**Migration notes:** The historical description says “create a club under the signed in user,” which suggests ownership, but current behavior does not implement it. Do not silently change this during a mechanical port.
+**Notes:** The historical description says “create a club under the signed in user,” which suggests ownership, but the code doesn't implement it. A mechanical port leaves it unchanged.
 
 ## SQL source accounting
 
@@ -777,31 +779,39 @@ The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL 
 
 ## Current transaction boundaries
 
-| Workflow | Current boundary | Migration concern |
+| Workflow | Current boundary | Issue |
 | --- | --- | --- |
 | Student ensure | Existence check followed by an upsert when missing | Separate calls, but duplicate-key upsert handles races; email-update behavior differs by path. |
-| Club creation | `INSERT_club` + `INSERT_club_info` in `ExecInsertQuery` transaction | Portable; add creator ownership only after group 29 is decided. |
-| Event creation | Event insert commits first; links + description use a later `ExecMulti` transaction | Broken SQL and possible orphan event; migrate as one transaction. |
-| Event-image confirmation | Two independent `Exec` calls | Possible orphan metadata; migrate as one transaction. |
-| QueryClient `ExecMulti` | One transaction across supplied statements | Reusable concept; ensure rollback/commit errors are propagated and context-aware. |
+| Club creation | `INSERT_club` + `INSERT_club_info` in `ExecInsertQuery` transaction | Portable; creator ownership waits on the group 29 decision. |
+| Event creation | Event insert commits first; links + description use a later `ExecMulti` transaction | Broken SQL and possible orphan event; needs one transaction. |
+| Event-image confirmation | Two independent `Exec` calls | Possible orphan metadata; needs one transaction. |
+| QueryClient `ExecMulti` | One transaction across supplied statements | Reusable concept. The module's version propagates rollback/commit errors and is context-aware. |
 | QueryClient `QueryMulti` | Begins a transaction and returns row handles after commit | Unused and unsafe to port without redesign. |
-| Database initialization | Statements split and executed one-by-one | No migration history, rollback, or safe retry; replace with a provider-neutral migration workflow. |
+| Database initialization | Statements split and executed one-by-one | No migration history, rollback, or safe retry. The module has no provider-neutral runner to replace it yet. |
 
-## Recommended migration checklist
+## Module status
 
-1. Establish a versioned MySQL migration baseline from the November DDL without re-running destructive or non-idempotent initialization against existing databases.
-2. Replace AWS-coupled connection creation with injected MySQL configuration; keep AWS Secrets Manager/RDS resolution in an adapter. **Phase 1:** independent client implemented; adapter and caller cutover remain planned.
-3. Replace the fixed-buffer SQL loader and add context-aware query execution. **Phase 1:** implemented only in the new module; legacy is unchanged.
-4. Add query/transaction integration tests against compatible MySQL before moving any handler.
-5. Port groups 1–11 and 13–15 with parity fixtures for null handling, date bounds, pagination, role precedence, and response mapping.
-6. Repair/test groups 12 and 16 before exposing their new API equivalents.
-7. Resolve group 29 and the authorization/product questions documented in the API map.
-8. Implement missing groups 18, 20, 23, and 25–28 only with their endpoint/policy phase; do not create unused SQL or empty directories now.
-9. Run the same query suite against local MySQL and an AWS-hosted compatible MySQL environment to prove hosting independence.
-10. Cut API callers over incrementally, keeping [`infrastructure/legacy/`](../infrastructure/legacy/) as the working reference until parity and rollback plans are reviewed.
+What the module has and lacks, in dependency order. Statuses use the [status legend](#status-legend).
 
-## Manual review required
+| # | Item | Status | Detail |
+| ---: | --- | --- | --- |
+| 1 | Versioned MySQL migration baseline from the November DDL | ⬜ | Must not re-run destructive or non-idempotent initialization against existing databases. |
+| 2 | Injected MySQL configuration instead of AWS-coupled connection creation | 🟨 | The independent client exists. The AWS Secrets Manager/RDS adapter and the caller cutover don't. |
+| 3 | Full-read SQL loader and context-aware query execution | 🟨 | In the module only; legacy is unchanged. |
+| 4 | Query/transaction integration tests against compatible MySQL | ⬜ | Needed before any handler moves. |
+| 5 | Groups 1–11 and 13–15 ported with parity fixtures for null handling, date bounds, pagination, role precedence, and response mapping | 🟨 | SQL copied; no callers or parity fixtures. |
+| 6 | Groups 12 and 16 repaired and tested | ⬜ | Needed before their API equivalents are exposed. |
+| 7 | Group 29 and the authorization/product questions in the API reference resolved | ❓ | See [Open questions](#open-questions) and the [API's open questions](../api/README.md#open-questions). |
+| 8 | Missing groups 18, 20, 23, and 25–28 | ⬜ | Each is written with its endpoint and policy, not ahead of it; no unused SQL or empty directories. |
+| 9 | The same query suite run against local MySQL and AWS-hosted compatible MySQL | ⬜ | This is what proves hosting independence. |
+| 10 | API callers cut over | ⬜ | Incrementally. [`infrastructure/legacy/`](../infrastructure/legacy/) stays the working reference until parity and rollback plans are reviewed. |
 
+## Open questions
+
+Product and data decisions the code doesn't settle:
+
+- Whether request-time student sync updates a changed email on an existing row.
+- Whether owner-club authority, event authorship, or admins take precedence in event authorization.
 - Club creator ownership and initial verification behavior.
 - Admin bootstrap, last-admin protection, and admin-to-club response semantics.
 - Owner-only versus e-board-or-owner role administration.
@@ -809,23 +819,23 @@ The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL 
 - Pagination by joined row versus distinct event, deterministic ordering, and association completeness.
 - Nullable role/email fields and current Go model compatibility.
 - Image/thumbnail metadata ownership, transaction boundaries, replacement, deletion, and storage failure recovery.
-- Whether unused `student_info` and `event_tags` are future requirements or merely unserved schema; no schema deletion is proposed here.
+- Whether unused `student_info` and `event_tags` are requirements or unserved schema. Nothing proposes deleting them.
 - How to baseline existing `STAGING`/`PRODUCTION` databases into a real migration history without recreating resources or data.
 
-## Current versus planned state
+## Files
 
-- `database/README.md`: preserved schema/query migration map with Phase 1 status.
+- `database/README.md`: this reference: schema, query groups, and module status.
 - `database/assets/database-schema.png`: reused current-schema visual.
 - `database/go.mod` and `go.sum`: independent module using the existing Go 1.23.0 directive and Go 1.24.3 toolchain; existing modules are unchanged and no workspace is introduced.
 - `database/models/`: all five source models copied exactly, including fields, tags, types, and existing nullable-field limitations.
-- `database/queries/`: all 21 active SQL files copied exactly into the mapped paths; both image inserts are in `events/images/confirm/`. No inactive stub or missing query is added.
+- `database/queries/`: all 21 active SQL files copied exactly into their module paths; both image inserts are in `events/images/confirm/`. No inactive stub or missing query is included.
 - `database/migrations/`: all nine SQL history/seed files copied exactly, without a runner or execution.
 - `database/client/`: provider-independent pool, context-aware query methods, and transaction helpers; no active callers.
 - Offline tests: all 21 query byte lengths/hashes and absence of null padding, reads beyond 4096 bytes, mock transaction success/failure and insert IDs, and model scan compatibility (including preserved NULL-to-string failures). These do not establish SQL correctness or MySQL integration parity.
 - [`infrastructure/legacy/utils/query_client/`](../infrastructure/legacy/utils/query_client/): current application SQL/client source.
 - [`infrastructure/legacy/lambda/internal/database/init/`](../infrastructure/legacy/lambda/internal/database/init/): current initialization/migration source.
-- [`api/README.md`](../api/README.md): endpoint reference index; [`api/MIGRATION.md`](../api/MIGRATION.md): linked endpoint migration map.
+- [`api/README.md`](../api/README.md): endpoint reference index; [`api/LAYOUT.md`](../api/LAYOUT.md): where each endpoint's code goes in the `api/` module.
 
-Run the independent module's offline unit tests from `database/` with `go test ./...`. Tests use an in-memory SQL mock and a stub dialer; they do not connect to MySQL or AWS. Migration execution, live integration tests, API cutover, SQL repairs, and the manual-review decisions above remain future work.
+Run the independent module's offline unit tests from `database/` with `go test ./...`. Tests use an in-memory SQL mock and a stub dialer; they do not connect to MySQL or AWS. The module has no migration execution, live integration tests, API cutover, or SQL repairs, and the [open questions](#open-questions) are unresolved; see [Module status](#module-status).
 
-This pass copies source and adds an unused module only. It does not change active schema, SQL/API behavior, credentials, database hosting, or any deployed resource.
+The module is source only and unused. It changes no active schema, SQL or API behavior, credentials, database hosting, or deployed resource.

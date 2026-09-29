@@ -1,6 +1,6 @@
 # Events
 
-Public reads of **posted** events. Drafted and archived events never appear here; managers will read those through the planned [`/auth/events`](event-management.md) routes. A club's event list and event creation are in [club-events.md](club-events.md), and event images are in [images.md](images.md).
+Public reads of **posted** events. Drafted and archived events never appear here; the manager reads for them are the planned (⬜) [`/auth/events`](event-management.md) routes. A club's event list and event creation are in [club-events.md](club-events.md), and event images are in [images.md](images.md).
 
 Routes are registered in [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go). Response shapes come from the Go structs named below; example values are made up, following the sanitized examples in the [implementation's event docs](../../infrastructure/legacy/docs/api/events.md).
 

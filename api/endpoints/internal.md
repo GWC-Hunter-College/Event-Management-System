@@ -60,7 +60,7 @@ It never updates the email of an existing row.
 **Known issues:**
 
 - It isn't enough for owner-only rules such as [`PUT /clubs/{clubId}/members/roles`](memberships.md#-put-clubsclubidmembersroles).
-- A duplicate copy lives in [`lambda/internal/auth/club_authorization/`](../../infrastructure/legacy/lambda/internal/auth/club_authorization/club_authorization.go); the two should be consolidated into one.
+- A duplicate copy lives in [`lambda/internal/auth/club_authorization/`](../../infrastructure/legacy/lambda/internal/auth/club_authorization/club_authorization.go). The two are identical in purpose and neither is called.
 
 **Code:** [`utils/auth/club_authorization.go`](../../infrastructure/legacy/utils/auth/club_authorization.go) · [query group 13](../../database/README.md#13-club-authorization)
 

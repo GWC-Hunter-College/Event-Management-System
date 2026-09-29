@@ -1,13 +1,13 @@
 # Hunter College Clubs API
 
-The HTTP API behind the Hunter College clubs and events site ([Hunter-College-Clubs-Frontend](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend)). The public Girls Who Code site ([GWC-Website](https://github.com/GWC-Hunter-College/GWC-Website)) will also read public data from it, though it makes no API calls yet.
+The HTTP API behind the Hunter College clubs and events site ([Hunter-College-Clubs-Frontend](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend)). The public Girls Who Code site ([GWC-Website](https://github.com/GWC-Hunter-College/GWC-Website)) is a second, read-only client of the public routes; it makes no API calls yet.
 
 ```text
 Frontend -> API -> Database
 ```
 
-- **What this is:** the API's blueprint. It describes how each endpoint is designed to work and how the built ones behave today. Endpoints that aren't built yet are included and marked ⬜.
-- **Implementation:** Go Lambda handlers behind two API Gateway HTTP APIs, in [`infrastructure/legacy/`](../infrastructure/legacy/). The plan for building the provider-independent `api/` module is in [MIGRATION.md](MIGRATION.md).
+- **What this is:** the reference for every endpoint: how the deployed ones behave today, and the design for the ones that aren't built, which are marked ⬜.
+- **Implementation:** Go Lambda handlers behind two API Gateway HTTP APIs, in [`infrastructure/legacy/`](../infrastructure/legacy/). The provider-independent `api/` module has no code yet; its layout is in [LAYOUT.md](LAYOUT.md).
 - **Base URL:** whatever the frontend's `VITE_API_BASE_URL` points to. That's the API Gateway endpoint each stack prints as its `myHttpApiEndpoint` output: `ClubEventApiDev` (MySQL schema `STAGING`) or `ClubEventApiProd` (schema `PRODUCTION`). There's no custom domain, path prefix, or version prefix; append the paths below as they are.
 - **Format:** request and response bodies are JSON. A few image-route errors are plain text; those endpoints say so.
 - **Status:** comes from the code, never from a checkmark in the planning PDF. The PDF supplies the design intent for endpoints that aren't built yet.
@@ -79,7 +79,7 @@ A JWT tells you *who* the caller is. Roles live in MySQL, and a handler only enf
 
 ## Endpoints
 
-The whole design: every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/routes/), every internal function, and every endpoint the planning PDF's "Endpoints Revamp" and image-upload flow call for.
+Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/routes/), every internal function, and every endpoint the planning PDF's "Endpoints Revamp" and image-upload flow call for.
 
 | Access | Method | Path | What it does | Status | Docs |
 | --- | --- | --- | --- | --- | --- |
@@ -160,7 +160,7 @@ The planning PDF names some endpoints differently. These docs use the paths in t
 | `GET`, `PATCH`, `DELETE /clubs/{clubId}/events/{eventId}` and its `/images` and `/thumbnails` (the PDF's first endpoint list) | Designed as [`/auth/events/{eventId}`](endpoints/event-management.md); the built media routes are [club-scoped](endpoints/images.md) |
 | Internal `POST /images` | [Image metadata write](endpoints/internal.md#-image-metadata-write-pdf-post-images) (internal function, not a route) |
 
-An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code is in [MIGRATION.md](MIGRATION.md#design-doc-vs-code).
+An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code is in [pdf-coverage.md](pdf-coverage.md#design-doc-vs-code).
 
 ## Open questions
 
@@ -202,7 +202,8 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 
 ## More docs
 
-- [MIGRATION.md](MIGRATION.md): the build plan for the `api/` module: target layout, where each endpoint's code will live, build order, and how the planning PDF maps to the code.
-- [database/README.md](../database/README.md): schema and the 29 query groups the endpoints link to.
+- [LAYOUT.md](LAYOUT.md): the `api/` module's directory layout, the module path for each endpoint, and the order its pieces depend on each other.
+- [pdf-coverage.md](pdf-coverage.md): the planning PDF's endpoints compared with the code, item by item.
+- [database/README.md](../database/README.md): the database module, schema, and the 29 query groups the endpoints link to.
 - [Implementation reference](../infrastructure/legacy/docs/api/README.md) and [architecture docs](../infrastructure/legacy/docs/architecture/): the deployed stacks, authentication, and image uploads in more depth.
 - The frontend's [`docs/api.md`](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend/blob/staging/docs/api.md): what the frontend expects from each endpoint. It differs from the backend in places; each endpoint's known issues say where.

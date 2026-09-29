@@ -94,7 +94,7 @@ Saves an uploaded club logo: records the image metadata and points `clubs.fk_log
 
 **Status:** ⬜ Not built. No route, handler, query transaction, or S3 existence check.
 
-**Notes:** it should create or reuse the image row, update `clubs.fk_logo_id`, and clean up a replaced logo, atomically where possible.
+**Notes:** the designed behavior is to create or reuse the image row, update `clubs.fk_logo_id`, and clean up a replaced logo, atomically where possible.
 
 **Plan:** PDF upload guide, p. 25 · [query group 27](../../database/README.md#27-club-and-event-thumbnail-metadata-assignment)
 
@@ -240,7 +240,7 @@ Lists an event's gallery images with one-minute signed GET URLs. **It's broken:*
 **Known issues:**
 
 - Like the confirm route, it closes its shared database connection after each request (`defer queryClient.Conn.Close()`).
-- The planned split is public reads of posted events at [`GET /events/{eventId}/images`](events.md#-get-eventseventidimages) and manager reads at [`GET /auth/events/{eventId}/images`](event-management.md#-get-autheventseventidimages).
+- The design splits this route into public reads of posted events at [`GET /events/{eventId}/images`](events.md#-get-eventseventidimages) and manager reads at [`GET /auth/events/{eventId}/images`](event-management.md#-get-autheventseventidimages).
 
 **Code:** route [`event_image_routes.go`](../../infrastructure/legacy/gateway/routes/event_image_routes.go) · handler [`clubs/events/images/get/get.go`](../../infrastructure/legacy/lambda/api/clubs/events/images/get/get.go) · [query group 16](../../database/README.md#16-event-image-list)
 

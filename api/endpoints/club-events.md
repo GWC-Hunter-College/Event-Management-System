@@ -46,7 +46,7 @@ An unknown club returns `200` with `"events": []`.
 
 Creates a draft event, links it to the club as owner and to any associate clubs, and stores its description. The frontend's New event form calls it for both Save Draft and Post Event. **It's broken:** the SQL is invalid, so every call ends in `500`.
 
-**Auth:** 🔴 JWT. It should require e-board or owner of `clubId` (PDF), but **no role check runs**: any signed-in user can create an event for any club and link any associates.
+**Auth:** 🔴 JWT. The PDF requires e-board or owner of `clubId`, but **no role check runs**: any signed-in user can create an event for any club and link any associates.
 
 **Path params:** `clubId`, a required integer.
 

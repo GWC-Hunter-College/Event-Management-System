@@ -232,7 +232,7 @@ Where the frontend and backend disagree. M1–M7 were recorded in the Phase 1 re
 
 - **Frontend:** uses `draft`, `posted`, and `cancelled`. A cancelled event stays listed with a "Cancelled" pill (Events, Club, Event page) and loses its RSVP and calendar actions. `fromJsonEvent` maps any other non-empty status to `draft`, so an `archived` event would show as a draft.
 - **Backend:** the `events.status` enum is `drafted`, `posted`, `archived`, and public reads return `posted` only.
-- **Change: backend first, then frontend.** Expose `draft`, `posted`, and `cancelled` in the API, mapping the database's `drafted` to `draft`. Add `cancelled` to the enum in a new dated migration. Public reads return `posted` and `cancelled`; `archived` (and anything with `deleted_at` set) never appears publicly. Cancelling is a [`PATCH`](endpoints/event-management.md#-patch-autheventseventid) to `cancelled`; archiving is [`DELETE`](endpoints/event-management.md#-delete-autheventseventid). Allowed transitions follow [decision 2](README.md#decisions): `draft → posted`, `posted → cancelled`, `cancelled → posted`, and any status → `archived`; nothing goes back to `draft`. The frontend should stop mapping unknown statuses to `draft`. See [Event status](endpoints/events.md#event-status).
+- **Change: backend first, then frontend.** Expose `draft`, `posted`, and `cancelled` in the API. The [baseline schema](../database/migrations/schema/2026_09_29_baseline_up.sql) stores exactly those three, so no mapping is needed. Public reads return `posted` and `cancelled`; deleted events (`deleted_at` set) never appear in any read. Cancelling is a [`PATCH`](endpoints/event-management.md#-patch-autheventseventid) to `cancelled`; [`DELETE`](endpoints/event-management.md#-delete-autheventseventid) is a soft delete, and there's no `archived` status. Allowed transitions follow [decision 2](README.md#decisions): `draft → posted`, `posted → cancelled`, and `cancelled → posted`; nothing goes back to `draft`. The frontend should stop mapping unknown statuses to `draft`. See [Event status](endpoints/events.md#event-status).
 
 ### M11. Create-event extras: `status`, `flyer`, `altText`, `tags`
 
@@ -291,15 +291,15 @@ The planning PDF has an admin page for verifying clubs and managing admins. The 
 
 ## Schema needs
 
-The proposals above need these schema changes. Each goes in a new dated migration under `database/migrations/schema/`; none is written yet.
+The proposals above needed these schema changes. There's no live database yet, so they're written straight into the [baseline schema](../database/migrations/schema/2026_09_29_baseline_up.sql) rather than a migration. See the [schema review](../database/docs/schema-review.md).
 
 | Change | For | Need |
 | --- | --- | --- |
-| Add `cancelled` to `events.status` | M10 | Now |
-| An alt-text column on `images` ([decision 4](README.md#decisions)) | M11 | Now |
-| A `club_tags (fk_club_id, tag)` table holding lowercase topic keys, at most 3 per club (enforced by the API) ([decision 5](README.md#decisions)) | M13 | Now |
+| `events.status` is `draft`, `posted`, or `cancelled`; `DELETE` sets `deleted_at` | M10 | Now |
+| `images.alt_text` ([decision 4](README.md#decisions)) | M11 | Now |
+| `topics` and `club_tags (fk_club_id, slot, tag)`: lowercase topic keys, at most 3 per club, enforced by the database ([decision 5](README.md#decisions)) | M13 | Now |
 
-New queries: member count per club, club tags read and write, and club update. The event update ([group 25](../database/README.md#25-event-update-and-publish)), drafts list ([group 21](../database/README.md#21-club-draft-events)), thumbnail confirm ([group 27](../database/README.md#27-club-and-event-thumbnail-metadata-assignment)), and creator ownership ([group 29](../database/README.md#29-club-creator-ownership)) groups already exist.
+The queries these proposals need, including member count, club topics, club update, the event update, the drafts list, the thumbnail confirms, and creator ownership, are in [database/queries](../database/README.md#directory-layout).
 
 ## Not covered by the API yet
 

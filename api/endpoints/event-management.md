@@ -18,7 +18,7 @@ Every route below is 🔴 and needs a JWT plus e-board or owner of **any** club 
 
 ## 🔴 GET `/auth/events/{eventId}`
 
-Returns an event in any status (drafted, posted, and so on) with its description, for the event's managers (PDF: "protected for getting drafts").
+Returns an event in any status (draft, posted, or cancelled) with its description, for the event's managers (PDF: "protected for getting drafts").
 
 **Auth:** 🔴 JWT + e-board or owner of a linked club.
 
@@ -31,7 +31,7 @@ Returns an event in any status (drafted, posted, and so on) with its description
 **Proposed contract** (Need: **Now**, for the New event form's `?draft=:eventId` prefill. The edit form behind "EDIT EVENT" and the Manage tab's "EDIT" would use it too, but that's **Later**.) Fixes the prefill half of [M1](../coverage.md#m1-drafts-in-public-lists).
 
 - **Auth:** 🔴 JWT + e-board or owner of any linked club. `403` otherwise; `404` for an unknown event.
-- **Response `200`:** the same envelope as the public read, with a [proposed event object](events.md#proposed-event-object) in any [status](events.md#event-status), including `draft` and `archived`:
+- **Response `200`:** the same envelope as the public read, with a [proposed event object](events.md#proposed-event-object) in any [status](events.md#event-status), including `draft`. A deleted event is `404`:
 
   ```jsonc
   { "message": "Succesfully fetched event 42", "event": { /* event object */ } }
@@ -71,12 +71,12 @@ Updates event fields from a JSON body. It's also how an event gets published; th
 
 **Status:** ⬜ Not built. No route, handler, update query, or transaction.
 
-**Open:** patch semantics, which fields may change, concurrency control, changing associate clubs, and publishing rules. The frontend also has a `cancelled` status that the schema's `status` enum (`drafted`, `posted`, `archived`) doesn't have.
+**Open:** patch semantics, which fields may change, changing associate clubs, and publishing rules. Concurrent edits are last-write-wins until the edit form ships ([schema decision 6](../../database/docs/schema-review.md#decisions)). The legacy schema's `status` enum (`drafted`, `posted`, `archived`) has no `cancelled`; the [baseline schema](../../database/migrations/schema/2026_09_29_baseline_up.sql) has `draft`, `posted`, and `cancelled`.
 
 **Proposed contract.** Need: **Now**, because resuming a draft on the New event form (`?draft=:eventId`, then "SAVE DRAFT" or "POST EVENT") has to update that draft instead of creating a second event ([M12](../coverage.md#m12-resuming-a-draft-creates-a-second-event)). The Event page's "CANCEL EVENT" also uses it now (the cancel half of [M10](../coverage.md#m10-event-status-vocabulary-and-cancelled)). The "EDIT EVENT" and Manage tab "EDIT" buttons use it too, but editing a posted event is **Later**.
 
-- **Auth:** 🔴 JWT + e-board or owner of any linked club. `403` otherwise; `404` for an unknown or archived event.
-- **Request body:** any subset of the [create body](club-events.md#-post-clubsclubidevents)'s fields; omitted fields are unchanged. `status`, when present, is `posted` or `cancelled` and must be an [allowed transition](events.md#event-status) ([decision 2](../README.md#decisions)): `draft → posted`, `posted → cancelled`, or `cancelled → posted`. There's no way back to `draft`; saving a resumed draft sends its fields without `status` (or with `"status": "draft"` on a draft, which changes nothing). `archived` is only reachable through [`DELETE`](#-delete-autheventseventid). `associates`, when present, replaces the co-host list. Alt text isn't a field here: it's on the flyer's image row and changes with a new [flyer confirm](images.md#-post-clubsclubideventseventidthumbnailsconfirm).
+- **Auth:** 🔴 JWT + e-board or owner of any linked club. `403` otherwise; `404` for an unknown or deleted event.
+- **Request body:** any subset of the [create body](club-events.md#-post-clubsclubidevents)'s fields; omitted fields are unchanged. `status`, when present, is `posted` or `cancelled` and must be an [allowed transition](events.md#event-status) ([decision 2](../README.md#decisions)): `draft → posted`, `posted → cancelled`, or `cancelled → posted`. There's no way back to `draft`; saving a resumed draft sends its fields without `status` (or with `"status": "draft"` on a draft, which changes nothing). There's no `archived` status; removing an event is [`DELETE`](#-delete-autheventseventid). `associates`, when present, replaces the co-host list. Alt text isn't a field here: it's on the flyer's image row and changes with a new [flyer confirm](images.md#-post-clubsclubideventseventidthumbnailsconfirm).
 
   ```json
   { "event": { "title": "Example Event (moved)", "location": "Room 101" }, "status": "posted" }
@@ -123,21 +123,19 @@ Returns a presigned upload URL for an event gallery image; the body includes `fi
 
 ## 🔴 DELETE `/auth/events/{eventId}`
 
-Archives an event (PDF: "set status of event to archived"), or deletes it, depending on the product's retention policy.
+Deletes an event. The PDF says "set status of event to archived"; [decision 2](../README.md#decisions) replaces that with a soft delete through `deleted_at`, and there's no `archived` status.
 
 **Auth:** 🔴 JWT + e-board or owner of a linked club.
 
 **Path params:** `eventId`.
 
-**Status:** ⬜ Not built. No route, handler, archive or delete query, or cleanup.
+**Status:** ⬜ Not built. No route or handler. The SQL exists in the database module: the soft delete and the purge job ([query groups 26 and 31](../../database/README.md#26-event-deletion)).
 
-**Open:** the schema supports both `status = 'archived'` and `deleted_at`, and public reads don't filter on `deleted_at`. Pick one lifecycle before building this.
-
-**Proposed contract** (Need: **Later**: the manager bar and Manage tab have no delete button). Archiving is separate from cancelling: a cancelled event stays listed, an archived one disappears from every public read ([Event status](events.md#event-status)). Any status can be archived, and nothing leaves `archived` ([decision 2](../README.md#decisions)).
+**Proposed contract** (Need: **Later**: the manager bar and Manage tab have no delete button). Deleting is separate from cancelling: a cancelled event stays listed, a deleted one disappears from every read, public and manager ([Event status](events.md#event-status)). An event in any status can be deleted. The delete sets `deleted_at` and doesn't touch `status`; a batch job hard-deletes the event and its unused S3 files once the retention period has passed ([decision 2](../README.md#decisions)).
 
 - **Auth:** 🔴 JWT + e-board or owner of any linked club.
 - **Request body:** none.
-- **Response `200`:** `{"message": "Successfully archived event 42", "eventId": 42}`.
-- **Errors:** `401`, `403`, `404` (unknown or already archived), `500`.
+- **Response `200`:** `{"message": "Successfully deleted event 42", "eventId": 42}`.
+- **Errors:** `401`, `403`, `404` (unknown or already deleted), `500`.
 
 **Plan:** PDF "Endpoints Revamp", p. 18 · [query group 26](../../database/README.md#26-event-deletion)

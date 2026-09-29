@@ -121,7 +121,7 @@ Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/ro
 | 🔴 | PATCH | `/auth/events/{eventId}` | Updates an event in place: saves or posts a resumed draft (needed now, M12), cancels, or edits. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-patch-autheventseventid) |
 | 🔴 | POST | `/auth/events/{eventId}/thumbnails` | Presigned upload for an event thumbnail. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-post-autheventseventidthumbnails) |
 | 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
-| 🔴 | DELETE | `/auth/events/{eventId}` | Archives an event. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
+| 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
 | **Images** | | | | | | |
 | 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
 | 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
@@ -177,7 +177,7 @@ An item-by-item comparison of the PDF's 35-item "Endpoints Revamp" with the code
 Product decisions taken on 2026-09-29. The proposed contracts they affect are updated to match; items that need a frontend change are listed in [coverage.md](coverage.md#frontend-changes).
 
 1. **Default event status.** When the create-event body omits `status`, the event is created as a draft. The design-mode mock, which defaults to `posted`, changes to match.
-2. **Status transitions.** Allowed: `draft → posted`, `posted → cancelled`, `cancelled → posted`, and any status → `archived`, which is what [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) does. Nothing goes back to `draft`. See [Event status](endpoints/events.md#event-status).
+2. **Status transitions.** Statuses are `draft`, `posted`, and `cancelled`: the life of an event that still exists. Allowed: `draft → posted`, `posted → cancelled`, and `cancelled → posted`. Nothing goes back to `draft`. There's no `archived` status. [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) soft-deletes an event in any status: it sets `deleted_at`, every read skips the event from then on, and a batch job hard-deletes it (and its now-unused S3 files) once it has been deleted for longer than the retention period. Updated 2026-09-29 by the [schema decisions](../database/docs/schema-review.md#decisions). See [Event status](endpoints/events.md#event-status).
 3. **Event lists.** `limit` defaults to 50, with a maximum of 100. Upcoming events are ordered by start time ascending, past events descending. Lists carry the flyer URL and a photo count (`imageCount`); only the single-event read, [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid), returns the full gallery (`images`). See the [proposed event object](endpoints/events.md#proposed-event-object).
 4. **Flyer alt text** is stored on `images`, with the flyer's image row.
 5. **Club topics** come from a fixed list, stored as lowercase keys, at most 3 per club; the UI uppercases them. The design-mode fixtures change to use the same list. See the [proposed club object](endpoints/clubs.md#proposed-club-object).
@@ -200,7 +200,7 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 **Events**
 
 - Should the protected event routes be `/auth/events/{eventId}/...` (the revamp) or the current club-scoped media paths? Either way, keep one upload signer.
-- What can `PATCH /auth/events/{eventId}` change (fields, associate clubs, concurrency control), and what are the publish rules? Is archiving `status = 'archived'` or `deleted_at` (public reads ignore `deleted_at`)? (Cancelling and archiving are distinct: [decision 2](#decisions).)
+- What can `PATCH /auth/events/{eventId}` change (fields, associate clubs), and what are the publish rules? (Concurrent edits are last-write-wins for now, and deleting is a soft delete: [schema decisions](../database/docs/schema-review.md#decisions) 4 and 6.)
 - Where do managers get drafts: from `GET /clubs/{clubId}/events` (what the frontend expects) or a protected `GET /clubs/{clubId}/events/drafts` (the PDF)? [coverage.md](coverage.md#m1-drafts-in-public-lists) recommends the protected route. Which statuses may `GET /auth/events/{eventId}` return, and does an event's author get rights of their own?
 - Create-event contract: the frontend sends `status` and omits `timezone` and `associates`; the handler requires both, requires `description`, and always stores `drafted`. [coverage.md](coverage.md#m2-create-event-body-timezone-associates-description) recommends the backend make them optional. (The default status is [decision 1](#decisions).)
 - Member lists: which fields and pagination does `GET /clubs/{clubId}/members` need, may ordinary members see the list at all (without emails, per [decision 6](#decisions)), and is `/eboard` a separate endpoint or a filter on it?
@@ -232,6 +232,6 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 - [coverage.md](coverage.md): every frontend screen mapped to the endpoints behind it, the frontend/backend contract mismatches and which side should change, and what the API doesn't cover yet.
 - [LAYOUT.md](LAYOUT.md): the `api/` module's directory layout, the module path for each endpoint, and the order its pieces depend on each other.
 - [pdf-coverage.md](pdf-coverage.md): the planning PDF's endpoints compared with the code, item by item.
-- [database/README.md](../database/README.md): the database module, schema, and the 29 query groups the endpoints link to.
+- [database/README.md](../database/README.md): the database module, baseline schema, and the 31 query groups the endpoints link to.
 - [Implementation reference](../infrastructure/legacy/docs/api/README.md) and [architecture docs](../infrastructure/legacy/docs/architecture/): the deployed stacks, authentication, and image uploads in more depth.
 - The frontend's [`docs/api.md`](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend/blob/staging/docs/api.md): what the frontend expects from each endpoint. It differs from the backend in places; [coverage.md](coverage.md#contract-mismatches) lists every difference.

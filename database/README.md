@@ -1,8 +1,8 @@
 # Database module
 
-The provider-independent MySQL database module: schema history, database-facing models, the application's SQL, and a Go client. It holds five model files and 21 active SQL queries copied unchanged from legacy, eight schema/database history files, one seed file, and an independent Go client. Nothing calls it: every handler and caller still runs from [`infrastructure/legacy/`](../infrastructure/legacy/), and the module has no migration runner.
+The provider-independent MySQL database module: the baseline schema, development seed data, database-facing models, the application's SQL, and a Go client. It holds one baseline schema (up and down), one seed, 63 SQL query files covering every documented endpoint that's needed Now or Later, and an independent Go client. Nothing calls it yet: every deployed handler still runs from [`infrastructure/legacy/`](../infrastructure/legacy/), and the module has no migration runner.
 
-This file is also the map of every query the API needs, as [29 query groups](#query-groups), each linked to its SQL, its callers, and the endpoints it serves.
+This file is also the map of every query the API needs, as [31 query groups](#query-groups), each linked to its SQL and the endpoints it serves. The [directory layout](#directory-layout) lists every file, and [Transactions](#transactions) gives the order and boundary of every endpoint that runs more than one statement.
 
 ## Boundary
 
@@ -15,827 +15,470 @@ This file is also the map of every query the API needs, as [29 query groups](#qu
 
 Provider independence here means independence from AWS hosting, credentials, networking, and deployment APIs. It doesn't mean converting the MySQL schema or SQL dialect to another database engine.
 
-The module owns MySQL schema history, migrations, query behavior, transactions, and database-facing models. AWS Secrets Manager lookup, RDS endpoints, VPC attachment, Lambda configuration, and IAM permissions aren't in it; they sit behind adapters on the API/infrastructure side.
+The module owns MySQL schema, migrations, query behavior, transactions, and database-facing models. AWS Secrets Manager lookup, RDS endpoints, VPC attachment, Lambda configuration, and IAM permissions aren't in it; they sit behind adapters on the API/infrastructure side.
 
 ## Sources
 
-The legacy code is authoritative for status. The query groups were checked against:
+The legacy code is authoritative for what's deployed. The query groups were checked against:
 
 - the initializer's selected DDL and seed migrations;
 - all 21 embedded application SQL files under [`utils/query_client/queries/`](../infrastructure/legacy/utils/query_client/queries/);
 - every current handler query call;
 - query-client connection, loading, and transaction code;
 - inactive endpoint stub SQL; and
-- schema-implied operations the PDF's endpoint list needs.
+- the endpoint reference in [api/README.md](../api/README.md), including its proposed contracts and decisions.
 
-The historical `GWC Website Documentation.pdf` supplied entity and endpoint intent only. Its older conceptual schema, July-era SQL assumptions, and project-management checkmarks do not override the current November DDL or current callers.
+The historical `GWC Website Documentation.pdf` supplied entity and endpoint intent only. Its older conceptual schema, July-era SQL assumptions, and project-management checkmarks don't override the code or the API reference.
 
 ## Status legend
 
-- ✅ **SQL exists** — the SQL and its callers are identifiable and portable, even when the caller has a separately documented API/auth issue.
-- 🟨 **Partial** — query behavior is broken, missing one required part, spread across stale/inactive sources, or only reusable primitives exist.
-- ⬜ **No SQL** — the schema or a planned endpoint needs the behavior, but no implementation exists.
-- ❓ **Needs a decision** — product/data semantics have to be decided before the query group can be defined.
+- ✅ **SQL written and run:** every statement the group needs exists in [`queries/`](queries/) and was executed against MySQL 8.0.46 with the seed ([how](#how-the-queries-were-tested)). Callers, handlers, and route changes are separate work in the API.
+- 🟨 **Partial:** only reusable primitives exist, or no endpoint uses the SQL yet.
+- ⬜ **No SQL:** not written, because no endpoint that's needed Now or Later calls for it.
 
 ## Query group summary
 
-There are **29 query groups**:
+There are **31 query groups**:
 
 | Status | Count |
 | --- | ---: |
-| ✅ SQL exists | 14 |
-| 🟨 Partial or spread across sources | 7 |
-| ⬜ No SQL | 7 |
-| ❓ Needs a decision | 1 |
-| **Total** | **29** |
+| ✅ SQL written and run | 29 |
+| 🟨 Partial | 1 |
+| ⬜ No SQL | 1 |
+| **Total** | **31** |
 
-The current query surface accounts for 16 responsibilities: 14 ✅ groups and 2 🟨 groups. The 21 embedded SQL files form 15 of those groups; the sixteenth is the active event-image read whose required SQL file is absent. The other 13 groups cover needs from the PDF or inactive stubs, schema gaps, and one unresolved ownership decision.
+The 🟨 group is [19](#19-add-a-specified-club-member) (adding a student other than the caller: the insert exists, no endpoint does it). The ⬜ group is [17](#17-my-e-board-clubs) (`GET /me/clubs/eboard`, frontend need "—": the frontend filters `GET /me/clubs`).
 
-Legacy has no query-specific unit or integration tests. This module has offline query-loading, transaction, and model-scan unit tests. A ✅ means the SQL is identifiable and portable, not that its runtime behavior has been proven against MySQL.
+Groups 30 (club update) and 31 (purge job) are new in Phase 4. The future features listed as not covered by the API (board, announcements, edit history, import and export) have no queries.
 
-The SQL for groups 1–15 is copied to its module path, including the known broken event-creation SQL. A group's status describes its behavior and callers, not just whether a file exists. Missing queries, inactive stubs, SQL repairs, and application transaction changes aren't in the module.
+## Baseline schema
+
+There's no live database, so the schema is one baseline that creates everything from scratch, not a chain of migrations:
+
+- [`migrations/schema/2026_09_29_baseline_up.sql`](migrations/schema/2026_09_29_baseline_up.sql): every table, the six topics, and the two read views.
+- [`migrations/schema/2026_09_29_baseline_down.sql`](migrations/schema/2026_09_29_baseline_down.sql): drops everything. Only for rebuilding a local or test database.
+- [`migrations/seed/2026_09_29_baseline_seed.sql`](migrations/seed/2026_09_29_baseline_seed.sql): development data with explicit ids and times relative to the load date. Never load it into production.
+- [`migrations/history/`](migrations/history/): the July, September, and November schema files and the September seed, kept as a read-only record. They're never applied. The deployed legacy system still uses its own copies under [`infrastructure/legacy/lambda/internal/database/init/migrations/`](../infrastructure/legacy/lambda/internal/database/init/migrations/), which are unchanged.
+
+Once a real database exists, changes go in new dated migrations after the baseline. Why the baseline looks the way it does, and the decisions behind it, are in the [schema review](docs/schema-review.md). What a migration runner will need is [future work](docs/schema-review.md#future-work-a-migration-runner).
+
+![Legacy (November) database schema](assets/database-schema.png)
+
+The diagram shows the November schema that legacy deploys. The baseline adds `topics` and `club_tags`, the image columns, and the two views, and removes `archived`; see the table below.
+
+### Tables and views
+
+| Table | Purpose | Queries |
+| --- | --- | --- |
+| `students` | Cognito `sub` identity and optional email | Ensure/upsert, current student, member and admin lists. |
+| `student_info` | Optional username and name | Read by the member and admin lists. Nothing writes it yet. |
+| `clubs` | Club identity, unique name, logo image | Every club read; create, rename, logo confirm, takedown. |
+| `club_info` | Website URL and description | Create; upserted by club update. |
+| `club_members` | Membership, with e-board and owner flags (`NOT NULL`) | Join, leave, owner on create, member list, role update, authorization. |
+| `verified_clubs` | Directory approval | Verified filter; verify and unverify. |
+| `admins` | Global administrators | Admin check and admin CRUD. |
+| `topics` | The fixed topic list, loaded by the baseline | Referenced by `club_tags`. |
+| `club_tags` | Up to three topics per club, in order | Replaced by create and update; read through `club_details`. |
+| `events` | Event fields; `status` is `draft`, `posted`, or `cancelled`; UTC times; `deleted_at` soft delete | Create, update, status transitions, soft delete, purge; read through `event_details`. |
+| `event_descriptions` | One description per event | Create; upserted by update. |
+| `event_tags` | Free-text event tags | Nothing reads or writes them yet. |
+| `images` | One row per stored file, with owning club, uploader, alt text, and `deleted_at` | Insert on confirm, release, takedown, purge. |
+| `events_to_clubs` | Event-to-club links, at most one owner per event | Create, co-host replacement, lists, event authorization. |
+| `event_images` | Gallery links, ordered by their own `created_at` | Gallery confirm and list, takedown. |
+| `event_details` (view) | One row per event that isn't soft-deleted, with flyer, description, photo count, owner club, and co-hosts | Every event read. |
+| `club_details` (view) | One row per club, with logo, `club_info`, tags, member count, and verified | Club list and detail. |
 
 ## Directory layout
 
-The module's layout. Only the paths holding copied SQL exist, plus `models/`, `client/`, and the independent `go.mod`/`go.sum`. Every other query path is created with the first behavior it holds, so there are no empty directories.
+Every file under [`queries/`](queries/), grouped by resource. **Legacy** files are byte-for-byte copies of `infrastructure/legacy/utils/query_client/queries/`, pinned by [`inventory_test.go`](queries/inventory_test.go). **Fixed** files are legacy copies changed on purpose in Phase 4; their pins are the new bytes. Everything else is **new**. Each new and fixed file starts with a comment giving what it does, the endpoints that use it, its `?` parameters in order, and what it returns; a test checks that header. Legacy files keep their original bytes, so their parameters are listed here.
 
 ```text
-database/
-├── go.mod
-├── go.sum
-├── models/
-├── migrations/
-│   ├── schema/
-│   └── seed/
-├── queries/
-│   ├── students/
-│   │   └── ensure/
-│   ├── me/
-│   │   ├── get/
-│   │   ├── clubs/
-│   │   │   ├── list/
-│   │   │   └── eboard/
-│   │   │       └── list/
-│   │   └── events/
-│   │       └── list/
-│   ├── clubs/
-│   │   ├── list/
-│   │   ├── get/
-│   │   ├── create/
-│   │   ├── members/
-│   │   │   ├── list/
-│   │   │   ├── create/
-│   │   │   ├── leave/
-│   │   │   └── update_role/
-│   │   ├── events/
-│   │   │   └── list/
-│   │   ├── verification/
-│   │   │   ├── create/
-│   │   │   └── delete/
-│   │   └── thumbnails/
-│   │       └── confirm/
+queries/
+├── students/ensure/
+│   ├── EXISTS_student_by_sub.sql           legacy   (sub)
+│   ├── UPSERT_student.sql                  legacy   (sub, email)
+│   └── UPSERT_student_sub_only.sql         legacy   (sub)
+├── me/
+│   ├── get/SELECT_student_by_sub.sql       legacy   (sub)
+│   ├── clubs/list/SELECT_student_clubs.sql legacy   (sub)
+│   └── events/list/SELECT_student_events.sql fixed
+├── clubs/
+│   ├── list/SELECT_clubs.sql               fixed
+│   ├── get/
+│   │   ├── SELECT_club.sql                 fixed
+│   │   └── EXISTS_club.sql
+│   ├── create/
+│   │   ├── INSERT_club.sql                 legacy   (name)
+│   │   ├── INSERT_club_info.sql            legacy   (club id, website url, description)
+│   │   └── INSERT_club_owner.sql
+│   ├── update/
+│   │   ├── UPDATE_club.sql
+│   │   └── UPSERT_club_info.sql
+│   ├── tags/replace/
+│   │   ├── DELETE_club_tags.sql
+│   │   └── INSERT_club_tag.sql
+│   ├── members/
+│   │   ├── create/INSERT_club_member.sql   legacy   (club id, student id)
+│   │   ├── leave/DELETE_club_member.sql    legacy   (student id, club id)
+│   │   ├── list/SELECT_club_members.sql
+│   │   └── update_role/
+│   │       ├── SELECT_club_owners_for_update.sql
+│   │       └── UPDATE_club_member_role.sql
 │   ├── events/
-│   │   ├── read/
-│   │   ├── create/
-│   │   ├── update/
-│   │   ├── delete/
-│   │   ├── images/
-│   │   │   ├── list/
-│   │   │   └── confirm/
-│   │   └── thumbnails/
-│   │       └── confirm/
-│   ├── authorization/
-│   │   ├── clubs/
-│   │   │   └── can_manage/
-│   │   └── events/
-│   │       └── can_manage/
-│   ├── admins/
-│   │   ├── list/
-│   │   ├── get/
-│   │   ├── create/
-│   │   ├── delete/
-│   │   └── is_admin/
-│   └── images/
-│       └── delete/
-└── client/
+│   │   ├── list/SELECT_club_events.sql     fixed
+│   │   └── drafts/SELECT_club_drafts.sql
+│   ├── thumbnails/confirm/
+│   │   ├── SELECT_club_logo_for_update.sql
+│   │   └── UPDATE_club_logo.sql
+│   └── verification/
+│       ├── create/INSERT_verified_club.sql
+│       └── delete/DELETE_verified_club.sql
+├── events/
+│   ├── read/
+│   │   ├── SELECT_events.sql               fixed
+│   │   ├── SELECT_event.sql
+│   │   └── SELECT_event_status.sql
+│   ├── create/
+│   │   ├── INSERT_event.sql                fixed
+│   │   ├── INSERT_event_description.sql    fixed
+│   │   └── INSERT_event_club_link.sql      legacy   (event id, club id, is owner)
+│   ├── update/
+│   │   ├── SELECT_event_for_update.sql
+│   │   ├── UPDATE_event.sql
+│   │   ├── UPSERT_event_description.sql
+│   │   ├── DELETE_event_associates.sql
+│   │   ├── UPDATE_event_status_posted.sql
+│   │   └── UPDATE_event_status_cancelled.sql
+│   ├── delete/UPDATE_event_soft_delete.sql
+│   ├── thumbnails/confirm/UPDATE_event_thumbnail.sql
+│   ├── images/
+│   │   ├── list/SELECT_event_images.sql
+│   │   └── confirm/INSERT_event_image.sql  legacy   (event id, image id)
+│   └── purge/                              🔵 internal
+│       ├── UPDATE_images_of_purgeable_events.sql
+│       └── DELETE_purgeable_events.sql
+├── images/
+│   ├── create/INSERT_image.sql             fixed, moved from events/images/confirm/
+│   ├── get/SELECT_image.sql
+│   ├── release/UPDATE_image_soft_delete_if_unused.sql
+│   ├── delete/
+│   │   ├── UPDATE_clubs_clear_logo.sql
+│   │   ├── UPDATE_events_clear_thumbnail.sql
+│   │   ├── DELETE_event_image_links.sql
+│   │   └── UPDATE_image_soft_delete.sql
+│   └── purge/                              🔵 internal
+│       ├── SELECT_purgeable_images.sql
+│       └── DELETE_purged_image.sql
+├── authorization/
+│   ├── clubs/
+│   │   ├── can_manage/IS_student_authorized_club.sql   legacy (student id, club id)
+│   │   ├── is_member/IS_club_member.sql
+│   │   └── is_owner/IS_club_owner.sql
+│   ├── events/can_manage/IS_student_authorized_event.sql legacy (event id, student id)
+│   └── admins/is_admin/IS_admin.sql
+└── admins/
+    ├── list/SELECT_admins.sql
+    ├── get/SELECT_admin.sql
+    ├── create/INSERT_admin.sql
+    └── delete/DELETE_admin.sql
 ```
 
-Route-shaped query paths are for finding behavior, not a reason to duplicate SQL: the public and authorized event routes share the event-read queries and compose them with visibility and authorization policies. See the [API module layout](../api/LAYOUT.md#directory-layout).
+Totals: 63 files: 13 legacy, 8 fixed, 42 new. Names follow the existing prefixes: `SELECT_`, `INSERT_`, `UPDATE_`, `DELETE_`, `UPSERT_`, `EXISTS_`, `IS_`. The soft deletes are `UPDATE_…soft_delete` because the statement is an `UPDATE`; only the purge job and link removals use `DELETE_`.
 
-## Current authoritative schema
+Note the legacy parameter orders: `IS_student_authorized_event.sql` takes the event id first, while every other authorization query takes the student id first, and `INSERT_club_member.sql` takes the club id first.
 
-The initializer explicitly selects [`11_04_2025_create_core_tables_up.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/11_04_2025_create_core_tables_up.sql) as the current core DDL. If this image or older documentation differs from that file, the SQL file wins.
+**Authorization** is its own reusable queries, never copied into an endpoint's SQL. A handler runs the check, then the endpoint's query:
 
-![Current legacy database schema](assets/database-schema.png)
-
-See the [detailed legacy database overview](../infrastructure/legacy/docs/database/README.md) and [table-by-table schema reference](../infrastructure/legacy/docs/database/schema.md).
-
-### Current tables
-
-| Table | Current purpose | Query coverage |
+| Check | Query | Rule |
 | --- | --- | --- |
-| `students` | Cognito `sub` identity and optional email | Ensure/upsert and current-student reads exist. |
-| `student_info` | Optional username/name profile | No current application query. |
-| `clubs` | Club identity, name, and logo image FK | Read/create queries exist; logo assignment does not. |
-| `club_info` | Website URL and description | Read/create queries exist. |
-| `club_members` | Student/club membership with e-board/owner flags | Self-join/leave/read/auth queries exist; lists and role updates do not. |
-| `verified_clubs` | Public-discovery approval relation | Read filter exists; writes do not. |
-| `admins` | Global administrator relation | Only stale hard-coded stub SQL exists. |
-| `events` | Author, thumbnail, details, status, dates, and lifecycle timestamps | Reads exist; create SQL is broken; update/delete do not exist. |
-| `event_descriptions` | One description per event | Read exists; create SQL is broken. |
-| `event_tags` | Event tags | No current application query. |
-| `images` | Storage metadata | Event-image insert exists; delete and thumbnail assignment do not. |
-| `events_to_clubs` | Many-to-many event/club relation and owner-club flag | Read, create-link, and event-authorization queries exist. |
-| `event_images` | Event/gallery-image relation | Insert exists; active read query is missing. |
+| Is member | `authorization/clubs/is_member/IS_club_member.sql` | Any membership row. |
+| Can manage club | `authorization/clubs/can_manage/IS_student_authorized_club.sql` | E-board or owner of the club. |
+| Can manage event | `authorization/events/can_manage/IS_student_authorized_event.sql` | E-board or owner of **any** club linked to the event. |
+| Is owner | `authorization/clubs/is_owner/IS_club_owner.sql` | Owner of the club. |
+| Is admin | `authorization/admins/is_admin/IS_admin.sql` | Has an `admins` row. |
 
-### Initialization sources
+### Fixed defects
 
-The current initializer at [`lambda/internal/database/init/main.go`](../infrastructure/legacy/lambda/internal/database/init/main.go):
+Each fix is in the module's copy only; `infrastructure/legacy` is unchanged.
 
-1. runs [`07_11_2025_create_databases_up.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_databases_up.sql) to create `STAGING` and `PRODUCTION`;
-2. applies the November core DDL to both databases; and
-3. applies [`09_14_2025_seed_tables.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/09_14_2025_seed_tables.sql) to `STAGING`.
+| File | Defect | Fix |
+| --- | --- | --- |
+| `events/create/INSERT_event.sql` | 11 columns, 10 values; no value for `rsvp_link`; wrote `drafted` and `NOW()` | 8 columns, 8 parameters, status is a parameter, timestamps take their defaults. |
+| `events/create/INSERT_event_description.sql` | Trailing comma in the column list | Removed. |
+| `events/images/list/SELECT_event_images.sql` | Missing (the legacy gallery read loads a file that doesn't exist) | Written: gallery without the flyer, in upload order. |
+| `events/read/SELECT_events.sql`, `clubs/events/list/SELECT_club_events.sql`, `me/events/list/SELECT_student_events.sql` | Paged event-to-club rows, not events; matched ids and status with `LIKE`; strict date bounds; posted only; `/me/events` and club lists dropped other linked clubs | Select from `event_details`, one row per event, so `LIMIT` counts events; `=` and `IN` instead of `LIKE`; `posted` and `cancelled`; every linked club; the proposed list parameters. |
+| `clubs/list/SELECT_clubs.sql`, `clubs/get/SELECT_club.sql` | No description (list), tags, member count, or verified flag | Select from `club_details`. |
+| `images/create/INSERT_image.sql` | No owning club, uploader, or alt text; `NOW()` for `created_at` | Added the three columns; `created_at` takes its default. Moved to `images/create/`, because every confirm shares it. |
 
-The runner splits files on semicolons and executes statements without a migration-history table or encompassing transaction. Foreign-key ALTER statements and seed inserts can leave a partially initialized database, and the seed is not safely repeatable. There is no down migration matching the current November DDL. These are migration-runner issues, not schema defects. The module's copies of the migration files are history only; the module has never executed one.
+**List parameters** ([proposed](../api/endpoints/events.md#proposed-list-parameters)), shared by the three public lists: `when` is `upcoming` (not ended yet, `end_date > UTC_TIMESTAMP()`, start ascending), `past` (ended, start descending), or `NULL` (start ascending). `startDate` and `endDate` are optional UTC bounds, inclusive: `start_date >= startDate` and `end_date <= endDate`. `limit` (default 50, maximum 100) and `page` are validated by the API and passed as `LIMIT` and `OFFSET`. The drafts list takes only `limit` and `page` and orders by `updated_at` descending.
+
+## Transactions
+
+Endpoints that run more than one statement. Each "in one transaction" workflow uses the client's transaction helpers, and runs its statements in this order.
+
+| Endpoint | Order | Boundary |
+| --- | --- | --- |
+| `POST /clubs` | `INSERT_club` → `INSERT_club_info` → `INSERT_club_owner` (caller) → `INSERT_club_tag` once per topic, `slot` = position + 1 | One transaction. A duplicate name (`409`), an unknown topic, or a fourth topic (`400`) rolls everything back. |
+| `PATCH /clubs/{clubId}` | `SELECT_club` (merge omitted fields) → `UPDATE_club` → `UPSERT_club_info` → if `tags` sent: `DELETE_club_tags` → `INSERT_club_tag` × n → `SELECT_club` for the response | One transaction, after `EXISTS_club` (`404`) and the can-manage-club check (`403`). Last write wins. |
+| `POST /clubs/{clubId}/events` | `INSERT_event` (last insert id is the event id) → `INSERT_event_description` if there's a description → `INSERT_event_club_link` (owner, `TRUE`) → `INSERT_event_club_link` (`FALSE`) per associate, deduplicated | One transaction, after `EXISTS_club` (`404`) and the can-manage-club check (`403`). A bad associate id fails its foreign key and rolls back. |
+| `PATCH /auth/events/{eventId}` | `SELECT_event_for_update` (locks the row; no row is `404`) → merge → `UPDATE_event` → `UPSERT_event_description` if sent → if `associates` sent: `DELETE_event_associates` → `INSERT_event_club_link` × n → if `status` sent and differs from the current one: `UPDATE_event_status_posted` or `UPDATE_event_status_cancelled` (0 rows is `400`) → commit → `SELECT_event` (`public_only` `FALSE`) and `SELECT_event_images` for the response | One transaction, after the can-manage-event check (`403`). A `status` equal to the current one skips the status update. |
+| `DELETE /auth/events/{eventId}` | `UPDATE_event_soft_delete` | One statement. 0 rows is `404`. |
+| `POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm` | `SELECT_event_for_update` (no row is `404`) → `INSERT_image` (`event-thumbnail`, owner club, caller, alt text) → `UPDATE_event_thumbnail` → `UPDATE_image_soft_delete_if_unused` for the old flyer, if there was one | One transaction, after the can-manage-event check and the S3 existence check. |
+| `POST /clubs/{clubId}/thumbnails/confirm` | `SELECT_club_logo_for_update` (no row is `404`) → `INSERT_image` (`club-thumbnail`) → `UPDATE_club_logo` → `UPDATE_image_soft_delete_if_unused` for the old logo, if any | One transaction, after the can-manage-club check and the S3 existence check. |
+| `POST /clubs/{clubId}/events/{eventId}/images/confirm` | `SELECT_event_for_update` (for `owner_club_id`; no row is `404`) → `INSERT_image` (`event-image`) → `INSERT_event_image` | One transaction. Replaces the legacy handler's two separate commits. |
+| `DELETE /images/{imageId}` (takedown) | `SELECT_image` (no row is `404`; `fk_club_id` for the check) → `UPDATE_clubs_clear_logo` → `UPDATE_events_clear_thumbnail` → `DELETE_event_image_links` → `UPDATE_image_soft_delete` | One transaction, after the can-manage-club check on the owning club, or `IS_admin`. The purge job deletes the S3 object later. |
+| `PUT /clubs/{clubId}/members/roles` | `SELECT_club_owners_for_update` → `UPDATE_club_member_role`. On 0 rows: `IS_club_member` (0 is `404`); otherwise, if the member already has that role, `200`; else `409` (last owner) | One transaction, after `EXISTS_club` and `IS_club_owner` for the caller (`403`). Locking the owner rows stops two owners demoting each other at once. |
+| `POST /clubs/{clubId}/members/me` | `EXISTS_club` (`404`) → `INSERT_club_member` (0 rows is `409`) | Two statements, no transaction needed: the insert is guarded on its own. |
+| `DELETE /clubs/{clubId}/members/me` | `DELETE_club_member`; on 0 rows `IS_club_member` (0 is `404`, 1 is `403`: the caller is the owner) | No transaction needed. |
+| `POST /admins`, `POST /clubs/{clubId}/verification` | `INSERT_admin` or `INSERT_verified_club`; on 0 rows, `SELECT_student_by_sub` or `EXISTS_club` tells missing (`404`) from already done | No transaction needed. |
+| Purge job (🔵) | **Transaction 1:** `UPDATE_images_of_purgeable_events` → `DELETE_purgeable_events`, both with the same retention period. **Then, per batch:** `SELECT_purgeable_images` → for each row: `DELETE_purged_image` (commit) → delete the S3 object | Transaction 1 is atomic. Each image is its own step, and its row goes before its object, so a failed S3 delete leaves only a harmless orphan object. |
+
+Reads with a follow-up check, not a transaction: `GET /events/{eventId}` is `SELECT_event` (`public_only` `TRUE`, no row is `404`) then `SELECT_event_images`. `GET /auth/events/{eventId}` is the can-manage-event check, then the same two with `public_only` `FALSE`. The gallery routes run `SELECT_event_status` first (public routes need `posted` or `cancelled`).
+
+## How the queries were tested
+
+On a local machine, in a throwaway MySQL 8.0.46 Docker container (RDS runs 8.0.37) with the default strict `sql_mode` and the server time zone at `+00:00`. Only files under `database/` were mounted, read-only. Nothing from `infrastructure/legacy` was run, built, or imported, and no AWS credentials, `.env` files, or remote databases were used. The container was removed afterwards.
+
+1. Applied the baseline, then the seed.
+2. Ran every one of the 63 query files with bound parameters: each file's text was sent to `PREPARE … FROM` unchanged, with `EXECUTE … USING` for the parameters, the same binding the Go driver uses. The results were checked against the seed. Among them:
+   - Paging with `limit` 2 returned four pages of distinct events. The three-club hackathon counted once.
+   - `when=upcoming` included the ongoing event and ordered by start ascending. `when=past` ordered descending. Cancelled events appeared; drafts and soft-deleted events didn't.
+   - Every illegal status change affected 0 rows: `draft → cancelled`, `posted → posted`, `cancelled → cancelled`, posting a draft with no location, and changing a soft-deleted event. The allowed `draft → posted → cancelled → posted` chain affected 1 row each.
+   - The role update refused to demote a club's last owner, and allowed demoting one of two.
+   - A flyer that's also in its gallery was excluded from `image_count` and the gallery. The release query kept a photo that was still in two galleries; the takedown removed both links, then soft-deleted it.
+   - The purge job removed the event soft-deleted 45 days ago, kept the one deleted 3 days ago, and cascaded its links. It then soft-deleted and purged that event's unshared flyer and photo. Deleting a still-referenced image was refused.
+   - Constraint errors: a fourth topic, wrong-case and unknown topics, a duplicate topic, a duplicate club name in different case, end before start, status `'archived'`, and a duplicate `object_key`.
+3. Ran the down file on the changed database, which left it empty. Then ran the baseline and seed again, and the schema dump matched the first one exactly.
+
+`go test ./...` in `database/` checks the pins for the 21 copied files, the header of every new or fixed file, the naming prefixes, complete loading of each file, the client's transactions, and model scans. It doesn't connect to MySQL; the container run above is the only execution against a database, and it isn't automated yet.
 
 ## Shared application query access
 
-Current access is implemented by [`query_client.go`](../infrastructure/legacy/utils/query_client/query_client.go), [`helpers.go`](../infrastructure/legacy/utils/query_client/helpers.go), and [`types.go`](../infrastructure/legacy/utils/query_client/types.go):
+Legacy access is implemented by [`query_client.go`](../infrastructure/legacy/utils/query_client/query_client.go), [`helpers.go`](../infrastructure/legacy/utils/query_client/helpers.go), and [`types.go`](../infrastructure/legacy/utils/query_client/types.go):
 
 - Go embeds every `queries/**/*.sql` file into each consuming binary.
 - `sqlx` and the MySQL driver execute `Get`, `Select`, `Exec`, and transaction helpers.
-- active handlers use `NewClientFromHost`, which loads credentials from AWS Secrets Manager and receives an RDS host/schema through environment variables.
+- Active handlers use `NewClientFromHost`, which loads credentials from AWS Secrets Manager and receives an RDS host/schema through environment variables.
 - `loadSQLFromFile` allocates exactly 4096 bytes and ignores the byte count returned by `Read`, so every query risks trailing null bytes and queries over 4 KiB risk truncation.
-- `Get`, `Select`, and `Exec` do not use context-aware database methods.
-- `NewClient` accepts but does not apply `dbName`; active code uses `NewClientFromHost` instead.
-- the unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name, an unvalidated identifier; the module doesn't include it.
+- `Get`, `Select`, and `Exec` don't use context-aware database methods.
+- The unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name; the module doesn't include it.
 
-The new [`database/client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. Callers supply credentials, `Net`/`Addr`, `DBName`, and TLS options using the MySQL driver's configuration defaults. AWS secret retrieval and RDS endpoint resolution are outside this module. There's no AWS adapter, and no legacy caller uses the module.
+The module's [`client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. AWS secret retrieval and RDS endpoint resolution are outside this module. [`queries.Load`](queries/queries.go) embeds all 63 query files and reads their complete bytes.
 
-[`queries.Load`](queries/queries.go) embeds only the 21 copied application queries and reads their complete bytes. `ExecMulti` commits a statement batch; `ExecInsertQuery` also prepends the initial insert ID to selected later statements. Both propagate commit/rollback failures and return results only after successful commit. No application workflow is recomposed. Raw-row `Query`/`QueryRow` APIs, the unsafe `ChangeDatabase`/`QueryMulti` helpers, and initialization/migration execution are not ported.
+Client configuration the baseline needs ([T1](docs/schema-review.md#t1-store-start-and-end-in-utc)): `ParseTime = true`, `Loc = UTC`, and `Params["time_zone"] = "'+00:00'"`. The go-sql-driver default `clientFoundRows = false` is assumed: affected-row counts are *changed* rows, which the 0-row checks above rely on.
 
-Current SQL intentionally uses MySQL features such as `AUTO_INCREMENT`, `ENUM`, `BOOL`, backticks, `ON DUPLICATE KEY UPDATE`, and MySQL nullable/unique semantics. The module keeps those semantics; changing them would be a database redesign.
-
-The DDL also permits null in many non-primary-key columns while several current Go club/event model fields use non-pointer values. Moving a query to the module needs scan-parity fixtures beyond the known nullable-student-email case.
+The Go models in [`models/`](models/) are still the legacy copies and don't match the baseline yet: `Student.Email`, `Event.Location`, and `Event.AuthorID` need to be pointers, `Event.Status` values change, and `Image` needs `ClubID`, `UploadedBy`, `AltText`, and `DeletedAt`. The view columns (`image_count`, `owner_*`, the JSON `associates` and `tags`) need model structs too. That's API cutover work; this phase changed docs and SQL only.
 
 ## Query groups
 
+Each group lists its endpoints (the access marker and status are the endpoint's, from [api/README.md](../api/README.md#endpoints)), its files, and anything a handler must know.
+
 ### 1. Student existence and upsert
 
-**Status:** ✅ Legacy queries exist and can be ported.
-
-**Purpose:** Ensures a Cognito `sub` has a `students` row, optionally updates email, and supports both identity-trigger and request-time synchronization.
-
-**Used by:** Internal Cognito student sync and these handler paths: [`GET /me`](../infrastructure/legacy/lambda/api/me/get.go), [`GET /me/clubs`](../infrastructure/legacy/lambda/api/me/clubs/get.go), [`GET /me/events`](../infrastructure/legacy/lambda/api/me/events/get.go), [`POST /clubs`](../infrastructure/legacy/lambda/api/clubs/post/post.go), [`POST /clubs/{clubId}/events`](../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go), [`POST /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go), and the currently miswired [`DELETE /clubs/{clubId}/members/me`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go). Their route context is documented under [Internal functions](../api/endpoints/internal.md), [Me](../api/endpoints/me.md), [Clubs](../api/endpoints/clubs.md), [Memberships](../api/endpoints/memberships.md), and [Club events](../api/endpoints/club-events.md).
-
-**Tables:** `students`.
-
-**Legacy queries:** [`EXISTS_student_by_sub.sql`](../infrastructure/legacy/utils/query_client/queries/students/EXISTS_student_by_sub.sql), [`UPSERT_student.sql`](../infrastructure/legacy/utils/query_client/queries/students/UPSERT_student.sql), and [`UPSERT_student_sub_only.sql`](../infrastructure/legacy/utils/query_client/queries/students/UPSERT_student_sub_only.sql).
-
-**Legacy callers:** [`utils/auth/ensure_student.go`](../infrastructure/legacy/utils/auth/ensure_student.go) and [`lambda/internal/auth/postConfirm/upsert.go`](../infrastructure/legacy/lambda/internal/auth/postConfirm/upsert.go).
-
-**Module path:** `database/queries/students/ensure/` (SQL copied).
-
-**Portable:** Yes. Preserve MySQL `ON DUPLICATE KEY UPDATE`; inject connection credentials rather than loading AWS Secrets Manager in the query module.
-
-**Notes:** The existence check and upsert are separate request-time operations, but the upsert remains safe under a race. Request-time synchronization doesn't update a changed email when the row already exists; whether it should is an [open question](#open-questions).
+**Status:** ✅ · **Endpoints:** 🔵 Cognito student sync trigger, 🔵 `RequireStudent` (before every 🔴 route).
+**Files:** `students/ensure/EXISTS_student_by_sub.sql`, `UPSERT_student.sql`, `UPSERT_student_sub_only.sql` (legacy, unchanged).
+**Notes:** Request-time sync doesn't update a changed email on an existing row; whether it should is an [open question](#open-questions).
 
 ### 2. Current student
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Reads the student matching the verified caller identity.
-
-**Used by:** [`GET /me`](../api/endpoints/me.md#-get-me).
-
-**Tables:** `students`.
-
-**Legacy query:** [`SELECT_student_by_sub.sql`](../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_by_sub.sql).
-
-**Legacy caller:** [`lambda/api/me/get.go`](../infrastructure/legacy/lambda/api/me/get.go).
-
-**Module path:** `database/queries/me/get/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** `students.email` is nullable, but the current Go model uses a non-nullable string. The module's copy preserves that model exactly, and a parity test documents the NULL scan failure. An explicit null representation is needed before API cutover.
+**Status:** ✅ · **Endpoints:** 🔴 [`GET /me`](../api/endpoints/me.md#-get-me).
+**Files:** `me/get/SELECT_student_by_sub.sql` (legacy); the proposed `isAdmin` comes from `authorization/admins/is_admin/IS_admin.sql`.
+**Notes:** `email` may be `NULL`; the Go model must allow it.
 
 ### 3. Current student's clubs and roles
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Lists the caller's club memberships, logo object key, and a computed role with owner precedence over e-board and member.
-
-**Used by:** [`GET /me/clubs`](../api/endpoints/me.md#-get-meclubs).
-
-**Tables:** `club_members`, `clubs`, `images`.
-
-**Legacy query:** [`SELECT_student_clubs.sql`](../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_clubs.sql).
-
-**Legacy caller:** [`lambda/api/me/clubs/get.go`](../infrastructure/legacy/lambda/api/me/clubs/get.go).
-
-**Module path:** `database/queries/me/clubs/list/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The selected `images.object_key` is exposed by the current API as `thumbnailUrl`. Storage URL generation stays outside the query; whether to keep that naming quirk is an API-layer decision.
+**Status:** ✅ · **Endpoints:** 🔴 [`GET /me/clubs`](../api/endpoints/me.md#-get-meclubs).
+**Files:** `me/clubs/list/SELECT_student_clubs.sql` (legacy, unchanged). `thumbnail_url` is the logo's object key; the API signs it.
 
 ### 4. Current student's events
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Reads posted events associated with any club joined by the caller, including description and linked-club rows.
-
-**Used by:** Active [`GET /me/events`](../api/endpoints/me.md#-get-meevents), which replaced historical `GET /me/clubs/events`.
-
-**Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`, `club_members`.
-
-**Legacy query:** [`SELECT_student_events.sql`](../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_events.sql).
-
-**Legacy caller:** [`lambda/api/me/events/get.go`](../infrastructure/legacy/lambda/api/me/events/get.go).
-
-**Module path:** `database/queries/me/events/list/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** SQL applies strict date bounds and paginates joined association rows, not distinct events. It returns only linked clubs the student joined, which can omit the owner club from an otherwise qualifying event. Keeping this behavior needs explicit contract tests.
+**Status:** ✅ · **Endpoints:** 🔴 [`GET /me/events`](../api/endpoints/me.md#-get-meevents).
+**Files:** `me/events/list/SELECT_student_events.sql` (fixed).
+**Notes:** Posted and cancelled events linked to any club the caller joined, with every linked club, one row per event.
 
 ### 5. Club list and verified filter
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Lists club summaries and optionally restricts them to rows present in `verified_clubs`.
-
-**Used by:** [`GET /clubs`](../api/endpoints/clubs.md#-get-clubs), including `?verified=true`.
-
-**Tables:** `clubs`, `images`, `verified_clubs`.
-
-**Legacy query:** [`SELECT_clubs.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_clubs.sql).
-
-**Legacy caller:** [`lambda/api/clubs/get.go`](../infrastructure/legacy/lambda/api/clubs/get.go).
-
-**Module path:** `database/queries/clubs/list/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The boolean argument implements “all versus verified-only” in one query. The route accepts only exact `true`/`TRUE`; HTTP string parsing stays in the handler, not the query code.
+**Status:** ✅ · **Endpoints:** 🟢 [`GET /clubs`](../api/endpoints/clubs.md#-get-clubs).
+**Files:** `clubs/list/SELECT_clubs.sql` (fixed): the proposed club object's columns, ordered by name.
 
 ### 6. Club detail
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Reads one club with optional image object key and club information.
-
-**Used by:** [`GET /clubs/{clubId}`](../api/endpoints/clubs.md#-get-clubsclubid).
-
-**Tables:** `clubs`, `images`, `club_info`.
-
-**Legacy query:** [`SELECT_club.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club.sql).
-
-**Legacy caller:** [`lambda/api/clubs/clubId/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/get.go).
-
-**Module path:** `database/queries/clubs/get/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** Keep HTTP path validation and not-found response mapping outside the query. Optional `club_info` and logo rows must remain nullable in the data model.
+**Status:** ✅ · **Endpoints:** 🟢 [`GET /clubs/{clubId}`](../api/endpoints/clubs.md#-get-clubsclubid); `EXISTS_club` serves every club-scoped route's `404`.
+**Files:** `clubs/get/SELECT_club.sql` (fixed), `clubs/get/EXISTS_club.sql`.
 
 ### 7. Club creation
 
-**Status:** ✅ Legacy queries exist and can be ported.
-
-**Purpose:** Inserts the main club row, obtains its auto-increment ID, and inserts the matching `club_info` row atomically.
-
-**Used by:** [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs).
-
-**Tables:** `clubs`, `club_info`.
-
-**Legacy queries:** [`INSERT_club.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club.sql) and [`INSERT_club_info.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_info.sql).
-
-**Legacy caller/transaction:** [`lambda/api/clubs/post/post.go`](../infrastructure/legacy/lambda/api/clubs/post/post.go) through [`QueryClient.ExecInsertQuery`](../infrastructure/legacy/utils/query_client/query_client.go).
-
-**Module path:** `database/queries/clubs/create/` (SQL copied).
-
-**Portable:** Yes; retain a MySQL transaction and last-insert-ID behavior behind a database interface.
-
-**Notes:** This transaction does **not** create an owner membership or verification row. That unresolved behavior is tracked as [group 29](#29-club-creator-ownership).
+**Status:** ✅ · **Endpoints:** 🔴 [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs).
+**Files:** `clubs/create/INSERT_club.sql`, `INSERT_club_info.sql` (legacy), `INSERT_club_owner.sql`, `clubs/tags/replace/INSERT_club_tag.sql`. Order in [Transactions](#transactions).
 
 ### 8. Join caller to club
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Inserts a regular membership only when both student and club exist and the membership does not already exist.
-
-**Used by:** Active self-service [`POST /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-post-clubsclubidmembersme); it partially satisfies historical `POST /clubs/{clubId}/members`.
-
-**Tables:** `students`, `clubs`, `club_members`.
-
-**Legacy query:** [`INSERT_club_member.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_member.sql).
-
-**Legacy caller:** [`lambda/api/clubs/clubId/members/me/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go).
-
-**Module path:** Shared `database/queries/clubs/members/create/`, with caller-scoping enforced by the API service (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The query accepts a student ID parameter and can be reused for an authorized “add specified member” operation, but the current handler supplies only the verified caller and always assigns both role flags false. It does not require a verified club.
+**Status:** ✅ · **Endpoints:** 🔴 [`POST /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-post-clubsclubidmembersme).
+**Files:** `clubs/members/create/INSERT_club_member.sql` (legacy), `clubs/get/EXISTS_club.sql`.
 
 ### 9. Leave caller's club
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Deletes a membership only when it belongs to the caller/club pair and is not marked owner.
-
-**Used by:** [`DELETE /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-delete-clubsclubidmembersme).
-
-**Tables:** `club_members`.
-
-**Legacy query:** [`DELETE_club_member.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/DELETE_club_member.sql).
-
-**Legacy caller:** [`lambda/api/clubs/clubId/members/me/delete/delete.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go).
-
-**Module path:** `database/queries/clubs/members/leave/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The SQL owner guard is valid behavior, but the active route never supplies the JWT context its handler requires. That is an API wiring defect, not a missing query. Also review nullable `member_is_owner`: `= FALSE` does not match null.
+**Status:** ✅ · **Endpoints:** 🟨 [`DELETE /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-delete-clubsclubidmembersme) (the route still needs its authorizer).
+**Files:** `clubs/members/leave/DELETE_club_member.sql` (legacy), `authorization/clubs/is_member/IS_club_member.sql`.
+**Notes:** The flags are `NOT NULL` in the baseline, so the legacy guard `member_is_owner = FALSE` now matches every non-owner.
 
 ### 10. Club event list
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Reads status/date-filtered events linked to one club, with descriptions and club-logo object keys.
-
-**Used by:** Public [`GET /clubs/{clubId}/events`](../api/endpoints/club-events.md#-get-clubsclubidevents); its status parameter also serves the planned authorized draft list ([group 21](#21-club-draft-events)).
-
-**Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
-
-**Legacy query:** [`SELECT_club_events.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club_events.sql).
-
-**Legacy caller:** [`lambda/api/clubs/clubId/events/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go).
-
-**Module path:** `database/queries/clubs/events/list/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The current handler supplies `posted`, `%`, strict date bounds, limit, and offset. SQL paginates joined rows, and filtering to the requested club prevents the response from reconstructing all event associations.
+**Status:** ✅ · **Endpoints:** 🟢 [`GET /clubs/{clubId}/events`](../api/endpoints/club-events.md#-get-clubsclubidevents).
+**Files:** `clubs/events/list/SELECT_club_events.sql` (fixed), `clubs/get/EXISTS_club.sql`.
 
 ### 11. Public and composite event read
 
-**Status:** ✅ Legacy query exists and can be ported.
-
-**Purpose:** Reads posted event rows, descriptions, and owner/associate club relations for both list and single-event responses.
-
-**Used by:** [`GET /events`](../api/endpoints/events.md#-get-events), [`GET /events/{eventId}`](../api/endpoints/events.md#-get-eventseventid), and the historical description/club subresources now combined into event detail.
-
-**Tables:** `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
-
-**Legacy query:** [`SELECT_events.sql`](../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql).
-
-**Legacy callers:** [`lambda/api/events/get.go`](../infrastructure/legacy/lambda/api/events/get.go) and [`lambda/api/events/eventId/get.go`](../infrastructure/legacy/lambda/api/events/eventId/get.go).
-
-**Module path:** Shared `database/queries/events/read/`, with list/get wrappers rather than duplicated SQL (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The query uses `LIKE` for an integer event ID, strict date bounds, row-level pagination, and no `deleted_at` predicate. The detail handler caps joined rows at 100. The inactive stub event/description SQL is superseded by this composite query and isn't in the module.
+**Status:** ✅ · **Endpoints:** 🟢 [`GET /events`](../api/endpoints/events.md#-get-events), 🟢 [`GET /events/{eventId}`](../api/endpoints/events.md#-get-eventseventid).
+**Files:** `events/read/SELECT_events.sql` (fixed), `SELECT_event.sql`, `SELECT_event_status.sql`, and `events/images/list/SELECT_event_images.sql` for the detail's `images`.
 
 ### 12. Create event draft
 
-**Status:** 🟨 Query group exists but is deterministically broken and split across transaction boundaries.
-
-**Purpose:** Inserts a drafted event, its owner/associate club links, and description.
-
-**Used by:** [`POST /clubs/{clubId}/events`](../api/endpoints/club-events.md#-post-clubsclubidevents).
-
-**Tables:** `events`, `events_to_clubs`, `event_descriptions`; foreign keys also depend on `students` and `clubs`.
-
-**Legacy queries:** [`INSERT_event.sql`](../infrastructure/legacy/utils/query_client/queries/events/INSERT_event.sql), [`INSERT_event_club_link.sql`](../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_club_link.sql), and [`INSERT_event_description.sql`](../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_description.sql).
-
-**Legacy caller:** [`lambda/api/clubs/clubId/events/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go).
-
-**Module path:** `database/queries/events/create/` as one transaction (SQL copied).
-
-**Portable:** Partial.
-
-**Notes:** `INSERT_event.sql` names 11 columns but supplies 10 values and has no value expression for `rsvp_link` while the handler passes seven arguments. `INSERT_event_description.sql` has a trailing comma in its column list. The initial event insert uses `Exec` before link/description `ExecMulti`, so a later failure can orphan the draft. The module's copy preserves these SQL bytes unchanged, so it's broken too. It needs repair and tests before any caller uses it.
+**Status:** ✅ · **Endpoints:** 🟨 [`POST /clubs/{clubId}/events`](../api/endpoints/club-events.md#-post-clubsclubidevents).
+**Files:** `events/create/INSERT_event.sql`, `INSERT_event_description.sql` (both fixed), `INSERT_event_club_link.sql` (legacy). One transaction; see [Transactions](#transactions).
 
 ### 13. Club authorization
 
-**Status:** ✅ Legacy query/helper exists and can be ported, but no active handler calls it.
-
-**Purpose:** Returns whether a student is an e-board member or owner of a specified club.
-
-**Used by:** Intended dependency for protected club/event writes and member administration documented under the [club role check](../api/endpoints/internal.md#-club-role-check).
-
-**Tables:** `club_members`.
-
-**Legacy query:** [`IS_student_authorized_club.sql`](../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_club.sql).
-
-**Legacy callers/helpers:** [`utils/auth/club_authorization.go`](../infrastructure/legacy/utils/auth/club_authorization.go) and a duplicate [`lambda/internal` package](../infrastructure/legacy/lambda/internal/auth/club_authorization/club_authorization.go); neither is called by active handlers.
-
-**Module path:** `database/queries/authorization/clubs/can_manage/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** Port one implementation and expose it through a shared application authorization policy. Owner-only operations such as historical role promotion require a stricter query/policy than this e-board-or-owner check.
+**Status:** ✅ · **Endpoints:** 🔵 club role check, used by every club write.
+**Files:** `authorization/clubs/can_manage/IS_student_authorized_club.sql` (legacy), `is_member/IS_club_member.sql`, `is_owner/IS_club_owner.sql`.
 
 ### 14. Event authorization
 
-**Status:** ✅ Legacy query/helper exists and can be ported, but no active handler calls it.
-
-**Purpose:** Returns whether a student is an e-board member or owner of any club linked to an event.
-
-**Used by:** Intended dependency for historical [authorized event routes](../api/endpoints/event-management.md).
-
-**Tables:** `events_to_clubs`, `club_members`.
-
-**Legacy query:** [`IS_student_authorized_event.sql`](../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_event.sql).
-
-**Legacy callers/helpers:** [`utils/auth/event_authorization.go`](../infrastructure/legacy/utils/auth/event_authorization.go) and duplicate [`lambda/internal` package](../infrastructure/legacy/lambda/internal/auth/event_authorization/event_authorization.go); neither is called by active handlers.
-
-**Module path:** `database/queries/authorization/events/can_manage/` (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The “any associated club” rule matches the historical rationale for `/auth/events/{eventId}`. Whether owner-club authority, event authorship, or admins take precedence is an [open question](#open-questions).
+**Status:** ✅ · **Endpoints:** 🔵 event role check, used by every `/auth/events` route and the event image routes.
+**Files:** `authorization/events/can_manage/IS_student_authorized_event.sql` (legacy). Whether an event's author or an admin gets rights of their own is an [open question](#open-questions).
 
 ### 15. Event-image metadata confirmation
 
-**Status:** ✅ Legacy insert queries exist and can be ported.
-
-**Purpose:** Inserts image metadata and links the new image to an event after a direct storage upload.
-
-**Used by:** [`POST /clubs/{clubId}/events/{eventId}/images/confirm`](../api/endpoints/images.md#-post-clubsclubideventseventidimagesconfirm); the generic historical internal image write can reuse the metadata insert.
-
-**Tables:** `images`, `event_images`; the event foreign key also depends on `events`.
-
-**Legacy queries:** [`INSERT_image.sql`](../infrastructure/legacy/utils/query_client/queries/images/INSERT_image.sql) and [`INSERT_event_image.sql`](../infrastructure/legacy/utils/query_client/queries/images/INSERT_event_image.sql).
-
-**Legacy caller:** [`lambda/api/clubs/events/images/confirm/post.go`](../infrastructure/legacy/lambda/api/clubs/events/images/confirm/post.go).
-
-**Module path:** `database/queries/events/images/confirm/`, reusing a shared image-metadata insert primitive (SQL copied).
-
-**Portable:** Yes.
-
-**Notes:** The current handler performs two independent `Exec` calls, so a failed association leaves an orphan `images` row. It trusts client-provided identifiers/keys and does not check object existence. Both database writes belong in one transaction; storage verification belongs in the application/storage adapter. The handler also closes a package-level client after each request, which can break warm Lambda reuse.
+**Status:** ✅ · **Endpoints:** 🔵 image metadata write; 🟨 [`POST /clubs/{clubId}/events/{eventId}/images/confirm`](../api/endpoints/images.md#-post-clubsclubideventseventidimagesconfirm), and the two thumbnail confirms (group 27).
+**Files:** `images/create/INSERT_image.sql` (fixed, moved), `events/images/confirm/INSERT_event_image.sql` (legacy).
 
 ### 16. Event-image list
 
-**Status:** 🟨 Active handler exists, but its required query file is absent.
-
-**Purpose:** Reads image metadata for an event so the API/storage adapter can produce download URLs.
-
-**Used by:** Active but broken club-scoped gallery read and historical public/protected image reads under [Images](../api/endpoints/images.md) and [Event management](../api/endpoints/event-management.md).
-
-**Tables:** Expected `event_images` joined to `images`.
-
-**Legacy query:** **Missing:** `utils/query_client/queries/images/SELECT_event_images.sql`.
-
-**Legacy caller:** [`lambda/api/clubs/events/images/get/get.go`](../infrastructure/legacy/lambda/api/clubs/events/images/get/get.go).
-
-**Module path:** Shared `database/queries/events/images/list/` (not created).
-
-**Portable:** Partial.
-
-**Notes:** Define and test the selected fields against the handler's nested `sqlx` scan shape. The handler also closes its package-level database connection after every request, risking failure on warm Lambda reuse. Posted-versus-draft visibility and URL signing are API/policy/storage concerns, not reasons to duplicate the metadata query.
+**Status:** ✅ · **Endpoints:** 🟨 [`GET /clubs/{clubId}/events/{eventId}/images`](../api/endpoints/images.md#-get-clubsclubideventseventidimages), ⬜ [`GET /events/{eventId}/images`](../api/endpoints/events.md#-get-eventseventidimages), ⬜ [`GET /auth/events/{eventId}/images`](../api/endpoints/event-management.md#-get-autheventseventidimages), and the `images` of the event detail reads.
+**Files:** `events/images/list/SELECT_event_images.sql` (the file legacy is missing), `events/read/SELECT_event_status.sql` for visibility.
+**Notes:** Columns are `image_id`, `mimetype`, `object_key`, `alt_text`. The legacy handler's nested `SelectQuerySchema` scan doesn't match them; it's rewritten with the API anyway.
 
 ### 17. My e-board clubs
 
-**Status:** 🟨 Inactive handler and stale stub SQL only; active role-list behavior can be reused.
-
-**Purpose:** Lists clubs where the caller is an e-board member or owner.
-
-**Used by:** Historical [`GET /me/clubs/eboard`](../api/endpoints/me.md#-get-meclubseboard).
-
-**Tables:** `club_members`, `clubs`, and optionally `images`.
-
-**Legacy query:** [`stub/lambda/me/clubs/eboard/eboard.sql`](../infrastructure/legacy/stub/lambda/me/clubs/eboard/eboard.sql).
-
-**Legacy caller:** Hard-coded inactive [`stub/lambda/me/clubs/eboard/get.go`](../infrastructure/legacy/stub/lambda/me/clubs/eboard/get.go).
-
-**Module path:** `database/queries/me/clubs/eboard/list/`, or reuse group 3 with a role filter (not created).
-
-**Portable:** Partial.
-
-**Notes:** The stub SQL selects student IDs rather than clubs and lacks parentheses around its `AND`/`OR` role condition. Prefer filtering/reusing the current club-and-role query over porting this SQL.
+**Status:** ⬜ · **Endpoints:** 🔴 [`GET /me/clubs/eboard`](../api/endpoints/me.md#-get-meclubseboard), frontend need "—".
+**Notes:** Not written: the frontend filters group 3 by role. If the route is built, filter `SELECT_student_clubs.sql`'s rows by role rather than porting the stale stub SQL.
 
 ### 18. Club member and e-board listing
 
-**Status:** ⬜ Query required but not found.
-
-**Purpose:** Lists club memberships, optionally filtered to e-board/owner roles, for historical member administration routes.
-
-**Used by:** Historical `GET /clubs/{clubId}/members` and `GET /clubs/{clubId}/eboard` under [Memberships](../api/endpoints/memberships.md).
-
-**Tables:** Expected `club_members`, `students`, and possibly `student_info`.
-
-**Legacy query/caller:** None; only placeholder `.txt` files exist under [`stub/lambda/clubs/clubId/members/`](../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
-
-**Module path:** Shared `database/queries/clubs/members/list/` with an explicit role filter (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** Define visibility, profile fields, pagination, and ordering before implementation. Do not create separate duplicated SQL for members and e-board if one filtered query suffices.
+**Status:** ✅ · **Endpoints:** ⬜ [`GET /clubs/{clubId}/members`](../api/endpoints/memberships.md#-get-clubsclubidmembers), ⬜ [`GET /clubs/{clubId}/eboard`](../api/endpoints/memberships.md#-get-clubsclubideboard) (as `role=eboard`).
+**Files:** `clubs/members/list/SELECT_club_members.sql`.
+**Notes:** `eboard` returns e-board members and owners, as memberships.md defines the e-board list; `owner` and `member` match the computed role.
 
 ### 19. Add a specified club member
 
-**Status:** 🟨 The insert primitive exists, but no authorized endpoint adds a student other than the caller.
-
-**Purpose:** Adds a chosen student to a club, distinct from self-service join.
-
-**Used by:** Historical `POST /clubs/{clubId}/members`; the active route is caller-only `.../members/me`.
-
-**Tables:** `students`, `clubs`, `club_members`.
-
-**Legacy query:** Reusable [`INSERT_club_member.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_member.sql).
-
-**Legacy caller:** Only the self-join handler [`lambda/api/clubs/clubId/members/me/post/post.go`](../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go).
-
-**Module path:** Shared `database/queries/clubs/members/create/` with API-level caller/target authorization (SQL copied, shared with group 8).
-
-**Portable:** Partial; SQL is portable, endpoint/policy behavior is missing.
-
-**Notes:** Define who can add another student, how the target is identified, and whether initial roles can be supplied. Do not let a route body bypass caller/owner policy.
+**Status:** 🟨 · **Endpoints:** none. The PDF's `POST /clubs/{clubId}/members` is designed as self-join only.
+**Notes:** `INSERT_club_member.sql` takes any student id, so it would serve if an endpoint is ever added.
 
 ### 20. Update member roles
 
-**Status:** ⬜ Query required but not found.
-
-**Purpose:** Promotes/demotes a club member's e-board/owner flags.
-
-**Used by:** Historical `PUT /clubs/{clubId}/members/roles` under [Memberships](../api/endpoints/memberships.md#-put-clubsclubidmembersroles).
-
-**Tables:** `club_members`.
-
-**Legacy query/caller:** No embedded application `UPDATE club_members` query or active handler found. A local [`stub/environment/populate.sql`](../infrastructure/legacy/stub/environment/populate/populate.sql) fixture contains hard-coded UPDATE statements but is not endpoint behavior.
-
-**Module path:** `database/queries/clubs/members/update_role/` (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** The historical owner-only rule is stricter than the current club authorization query. Define invariants for one/multiple owners, self-promotion, self-demotion, and nullable role values.
+**Status:** ✅ · **Endpoints:** ⬜ [`PUT /clubs/{clubId}/members/roles`](../api/endpoints/memberships.md#-put-clubsclubidmembersroles).
+**Files:** `clubs/members/update_role/SELECT_club_owners_for_update.sql`, `UPDATE_club_member_role.sql`, `authorization/clubs/is_owner/IS_club_owner.sql`.
 
 ### 21. Club draft events
 
-**Status:** 🟨 Reusable status-parameterized SQL exists, but no draft route/handler composes it with authorization.
-
-**Purpose:** Lists drafted events linked to a club for authorized managers.
-
-**Used by:** Historical `GET /clubs/{clubId}/events/drafts` under [Club events](../api/endpoints/club-events.md#-get-clubsclubideventsdrafts).
-
-**Tables:** Same as [group 10](#10-club-event-list): `events`, `events_to_clubs`, `clubs`, `images`, `event_descriptions`.
-
-**Legacy query:** Reusable [`SELECT_club_events.sql`](../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club_events.sql); active caller hardcodes `posted`.
-
-**Legacy caller:** [`lambda/api/clubs/clubId/events/get.go`](../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go) for public posted reads only.
-
-**Module path:** Reuse `database/queries/clubs/events/list/`; pass an application-approved status after club authorization (SQL copied, shared with group 10).
-
-**Portable:** Partial.
-
-**Notes:** Do not expose the query's status argument directly to an unauthenticated caller.
+**Status:** ✅ · **Endpoints:** ⬜ [`GET /clubs/{clubId}/events/drafts`](../api/endpoints/club-events.md#-get-clubsclubideventsdrafts).
+**Files:** `clubs/events/drafts/SELECT_club_drafts.sql`. The status is fixed in the SQL, so no caller can choose it.
 
 ### 22. Admin CRUD
 
-**Status:** 🟨 Schema plus hard-coded GET/DELETE stub SQL only.
-
-**Purpose:** Lists, reads, creates, and removes global administrator records.
-
-**Used by:** Historical [Admin routes](../api/endpoints/admins.md).
-
-**Tables:** `admins`, with `students` needed for validated identities and richer responses.
-
-**Legacy queries:** Unwired [`GET_admins_studentId.sql`](../infrastructure/legacy/stub/lambda/admins/studentId/GET_admins_studentId.sql) and [`DELETE_admins_studentId.sql`](../infrastructure/legacy/stub/lambda/admins/studentId/DELETE_admins_studentId.sql).
-
-**Legacy caller:** None. No list/create SQL or active handler exists.
-
-**Module path:** `database/queries/admins/{list,get,create,delete}/` plus a reusable admin check (not created).
-
-**Portable:** Partial.
-
-**Notes:** Both stubs hardcode integer ID `2`, while the current schema uses Cognito `CHAR(36)` student IDs. Treat the stubs as intent only. Admin bootstrap and last-admin rules belong in application policy/transactions.
+**Status:** ✅ · **Endpoints:** ⬜ [every `/admins` route](../api/endpoints/admins.md), 🔵 admin check.
+**Files:** `admins/list/SELECT_admins.sql`, `get/SELECT_admin.sql`, `create/INSERT_admin.sql`, `delete/DELETE_admin.sql`, `authorization/admins/is_admin/IS_admin.sql`.
+**Notes:** The admin responses aren't defined; the queries return student id, email, and name. What "their clubs" means, the first admin, and last-admin protection are [open](#open-questions); `DELETE_admin.sql` doesn't protect the last admin.
 
 ### 23. Club verification writes
 
-**Status:** ⬜ Queries required but not found.
-
-**Purpose:** Adds/removes a club from public verification state.
-
-**Used by:** Historical verification write routes under [Verification](../api/endpoints/verification.md).
-
-**Tables:** `verified_clubs`, with `clubs` for target validation.
-
-**Legacy query/caller:** No insert/delete query or handler. Group 5 reads verification state only.
-
-**Module path:** `database/queries/clubs/verification/create/` and `delete/` (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** Define duplicate/missing-row idempotency and the admin/club-administration policy outside the query.
+**Status:** ✅ · **Endpoints:** ⬜ [`POST` and `DELETE /clubs/{clubId}/verification`](../api/endpoints/verification.md).
+**Files:** `clubs/verification/create/INSERT_verified_club.sql`, `delete/DELETE_verified_club.sql`. Verifying twice is a no-op.
 
 ### 24. Authorized event read
 
-**Status:** 🟨 Read and authorization primitives exist separately; no protected/draft-capable composition exists.
-
-**Purpose:** Reads a non-public event only when the caller can manage at least one associated club.
-
-**Used by:** Historical `GET /auth/events/{eventId}` and related protected reads under [Event management](../api/endpoints/event-management.md#-get-autheventseventid).
-
-**Tables:** The union of group 11 (`events`, descriptions, clubs/images/links) and group 14 (`events_to_clubs`, `club_members`).
-
-**Legacy queries:** Reuse [`SELECT_events.sql`](../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) and [`IS_student_authorized_event.sql`](../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_event.sql).
-
-**Legacy caller:** No composed handler; public event detail hardcodes `posted` and role helper is unused.
-
-**Module path:** Reuse `database/queries/events/read/` plus `database/queries/authorization/events/can_manage/` (both SQL copied; nothing composes them).
-
-**Portable:** Partial.
-
-**Notes:** Keep authorization and read primitives reusable, but execute them through one application policy that avoids time-of-check/time-of-use ambiguity where material. Define which event statuses authorized callers may read.
+**Status:** ✅ · **Endpoints:** ⬜ [`GET /auth/events/{eventId}`](../api/endpoints/event-management.md#-get-autheventseventid).
+**Files:** the event role check (group 14), then `events/read/SELECT_event.sql` with `public_only` `FALSE` and `SELECT_event_images.sql`.
 
 ### 25. Event update and publish
 
-**Status:** ⬜ Queries required but not found.
-
-**Purpose:** Updates allowed event fields, description, associations, and status transitions such as drafted to posted.
-
-**Used by:** Historical [`PATCH /auth/events/{eventId}`](../api/endpoints/event-management.md#-patch-autheventseventid).
-
-**Tables:** At minimum `events`; potentially `event_descriptions`, `events_to_clubs`, and `event_tags` depending on the approved patch contract.
-
-**Legacy query/caller:** No event `UPDATE` SQL or patch handler found.
-
-**Module path:** `database/queries/events/update/` as a transaction assembled from reusable field-specific statements (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** Define patch semantics, allowed fields, status transitions, timestamp updates, associate-club authority, and concurrency behavior before SQL is written. Event creation always produces `drafted`, so nothing can publish an event through the deployed API.
+**Status:** ✅ · **Endpoints:** ⬜ [`PATCH /auth/events/{eventId}`](../api/endpoints/event-management.md#-patch-autheventseventid).
+**Files:** `events/update/*` (six files), `events/create/INSERT_event_club_link.sql`, `events/read/SELECT_event_status.sql`. Order in [Transactions](#transactions); allowed transitions in the [schema review](docs/schema-review.md#s3-allowed-transitions).
 
 ### 26. Event deletion
 
-**Status:** ⬜ Query required but not found.
-
-**Purpose:** Archives, soft-deletes, or physically deletes an event according to an explicit lifecycle policy.
-
-**Used by:** Historical [`DELETE /auth/events/{eventId}`](../api/endpoints/event-management.md#-delete-autheventseventid).
-
-**Tables:** `events` and, for physical cleanup, `event_descriptions`, `event_tags`, `events_to_clubs`, `event_images`, and possibly `images`.
-
-**Legacy query/caller:** No archive/delete SQL or handler found.
-
-**Module path:** `database/queries/events/delete/` (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** The schema offers both `status='archived'` and nullable `deleted_at`; current reads filter status but not `deleted_at`. Foreign keys have no documented cascade policy. Choose soft-delete/read behavior and storage cleanup before implementing a transaction.
+**Status:** ✅ · **Endpoints:** ⬜ [`DELETE /auth/events/{eventId}`](../api/endpoints/event-management.md#-delete-autheventseventid).
+**Files:** `events/delete/UPDATE_event_soft_delete.sql`. A soft delete ([decision 4](docs/schema-review.md#decisions)); group 31 hard-deletes later.
 
 ### 27. Club and event thumbnail metadata assignment
 
-**Status:** ⬜ Queries required but not found.
-
-**Purpose:** Confirms an uploaded thumbnail, creates image metadata, and assigns the image ID to `clubs.fk_logo_id` or `events.fk_thumbnail_id`.
-
-**Used by:** Missing club/event thumbnail confirmation steps documented under [Images](../api/endpoints/images.md#how-image-uploads-work).
-
-**Tables:** `images`, plus `clubs` or `events`.
-
-**Legacy query/caller:** Presign handlers exist, and group 15 provides a reusable image insert, but no thumbnail confirmation handler or FK-update SQL exists.
-
-**Module path:** `database/queries/clubs/thumbnails/confirm/` and `database/queries/events/thumbnails/confirm/`, sharing an image insert primitive (not created).
-
-**Portable:** N/A until implemented as complete transactions.
-
-**Notes:** Define replacement semantics and old-image cleanup. Both thumbnail foreign keys are unique, so duplicate/reassignment behavior and transaction ordering must be tested.
+**Status:** ✅ · **Endpoints:** ⬜ [`POST /clubs/{clubId}/thumbnails/confirm`](../api/endpoints/images.md#-post-clubsclubidthumbnailsconfirm), ⬜ [`POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm`](../api/endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm). The signers (✅ `POST /clubs/{clubId}/thumbnails`, ✅ `.../events/{eventId}/thumbnails`, ⬜ `POST /auth/events/{eventId}/thumbnails`) need only the role checks and `EXISTS_club` or `SELECT_event_status`.
+**Files:** `clubs/thumbnails/confirm/*`, `events/thumbnails/confirm/UPDATE_event_thumbnail.sql`, `events/update/SELECT_event_for_update.sql`, `images/create/INSERT_image.sql`, `images/release/UPDATE_image_soft_delete_if_unused.sql`.
 
 ### 28. Image deletion
 
-**Status:** ⬜ Query required but not found.
-
-**Purpose:** Removes image links/metadata safely and coordinates deletion of the storage object.
-
-**Used by:** Historical [`DELETE /images/{imageId}`](../api/endpoints/images.md#-delete-imagesimageid).
-
-**Tables:** Depending on purpose: `event_images`, `events`, `clubs`, and `images`.
-
-**Legacy query/caller:** No deletion SQL, handler, or storage cleanup flow found.
-
-**Module path:** `database/queries/images/delete/`, with storage deletion behind the API's storage adapter (not created).
-
-**Portable:** N/A until implemented.
-
-**Notes:** Define whether database unlink/delete precedes object deletion, how retries recover partial failure, whether shared images are allowed, and how orphaned uploads are collected. S3 operations themselves do not belong in this database module.
+**Status:** ✅ · **Endpoints:** ⬜ [`DELETE /images/{imageId}`](../api/endpoints/images.md#-delete-imagesimageid).
+**Files:** `images/get/SELECT_image.sql`, `images/delete/*` (four files). Removing one use, as the confirms do, is `images/release/`.
 
 ### 29. Club creator ownership
 
-**Status:** ❓ Manual product/data review required.
+**Status:** ✅ · **Endpoints:** 🔴 [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs).
+**Files:** `clubs/create/INSERT_club_owner.sql`, inside the club create transaction.
+**Notes:** Written to the proposed `POST /clubs` contract, which makes the creator the owner. Whether creating a club should also require an admin is still an [API open question](../api/README.md#open-questions).
 
-**Purpose:** Would determine whether creating a club atomically makes the authenticated creator its owner.
+### 30. Club update
 
-**Used by:** [`POST /clubs`](../api/endpoints/clubs.md#-post-clubs) and subsequent club-management authorization.
+**Status:** ✅ · **Endpoints:** ⬜ [`PATCH /clubs/{clubId}`](../api/endpoints/clubs.md#-patch-clubsclubid).
+**Files:** `clubs/update/UPDATE_club.sql`, `UPSERT_club_info.sql`, `clubs/tags/replace/*`, `clubs/get/SELECT_club.sql`.
 
-**Tables:** `clubs`, `club_info`, `club_members`, and `students`.
+### 31. Purge job
 
-**Legacy query/caller:** Group 7 creates `clubs` and `club_info`; the handler ensures the student exists but never passes `sub` into the transaction or inserts an owner membership. Seed data demonstrates owner memberships, but not the intended creation rule.
-
-**Module path:** If approved, extend the `database/queries/clubs/create/` transaction rather than adding a disconnected follow-up (group 7's SQL copied; no ownership insert).
-
-**Portable:** Unknown until the rule is decided.
-
-**Notes:** The historical description says “create a club under the signed in user,” which suggests ownership, but the code doesn't implement it. A mechanical port leaves it unchanged.
+**Status:** ✅ · **Endpoints:** 🔵 internal batch job (decision 4). Not exposed through API Gateway.
+**Files:** `events/purge/UPDATE_images_of_purgeable_events.sql`, `DELETE_purgeable_events.sql`, `images/purge/SELECT_purgeable_images.sql`, `DELETE_purged_image.sql`.
+**Notes:** Takes the retention period in days, which isn't decided yet. The job's S3 client and schedule live outside this module.
 
 ## SQL source accounting
 
-### Embedded application SQL
-
-All 21 files embedded by `utils/query_client` are accounted for in the inventory:
-
-| Legacy directory | Files | Query groups |
-| --- | ---: | --- |
-| [`queries/students/`](../infrastructure/legacy/utils/query_client/queries/students/) | 6 | 1–4 |
-| [`queries/clubs/`](../infrastructure/legacy/utils/query_client/queries/clubs/) | 7 | 5–10 |
-| [`queries/events/`](../infrastructure/legacy/utils/query_client/queries/events/) | 4 | 11–12 |
-| [`queries/authorization/`](../infrastructure/legacy/utils/query_client/queries/authorization/) | 2 | 13–14 |
-| [`queries/images/`](../infrastructure/legacy/utils/query_client/queries/images/) | 2 | 15; group 16 identifies the missing read file |
-
-### Inactive endpoint-stub SQL
-
-Seven SQL files under `stub/lambda/` are historical/supporting evidence, not active queries:
-
-- [`GET_me_clubs_events.sql`](../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql) is superseded by group 4.
-- [`eboard.sql`](../infrastructure/legacy/stub/lambda/me/clubs/eboard/eboard.sql) is recorded in group 17.
-- [`GET_events.sql`](../infrastructure/legacy/stub/lambda/events/GET_events.sql), [`eventsId.sql`](../infrastructure/legacy/stub/lambda/events/eventId/eventsId.sql), and [`description.sql`](../infrastructure/legacy/stub/lambda/events/eventId/description/description.sql) are superseded by group 11.
-- [`GET_admins_studentId.sql`](../infrastructure/legacy/stub/lambda/admins/studentId/GET_admins_studentId.sql) and [`DELETE_admins_studentId.sql`](../infrastructure/legacy/stub/lambda/admins/studentId/DELETE_admins_studentId.sql) are recorded in group 22.
-
-### Schema, seed, and local-stub SQL
-
-Nine migration files remain preserved in legacy and are copied byte-for-byte here: eight in [`migrations/schema/`](migrations/schema/) and `09_14_2025_seed_tables.sql` in [`migrations/seed/`](migrations/seed/). Only the database-creation migration, November core DDL, and September seed are selected by the current initializer. These earlier files are historical, not authoritative:
-
-- [`07_11_2025_create_core_tables_up.sql`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_core_tables_up.sql) and its [`down`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_core_tables_down.sql);
-- the July member-form [`up`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_member_form_migration_table_up.sql) and [`down`](../infrastructure/legacy/lambda/internal/database/init/migrations/07_11_2025_create_member_form_migration_table_down.sql); and
-- the September core [`up`](../infrastructure/legacy/lambda/internal/database/init/migrations/09_08_2025_create_core_tables_up.sql) and [`down`](../infrastructure/legacy/lambda/internal/database/init/migrations/09_08_2025_create_core_tables_down.sql).
-
-The three [`stub/environment/`](../infrastructure/legacy/stub/environment/) SQL files are local experiments/fixtures and are not part of the current initializer or query client. `SELECT 1 + 1` is embedded only in the dormant database-test handler and is not an application query group.
-
-## Current transaction boundaries
-
-| Workflow | Current boundary | Issue |
-| --- | --- | --- |
-| Student ensure | Existence check followed by an upsert when missing | Separate calls, but duplicate-key upsert handles races; email-update behavior differs by path. |
-| Club creation | `INSERT_club` + `INSERT_club_info` in `ExecInsertQuery` transaction | Portable; creator ownership waits on the group 29 decision. |
-| Event creation | Event insert commits first; links + description use a later `ExecMulti` transaction | Broken SQL and possible orphan event; needs one transaction. |
-| Event-image confirmation | Two independent `Exec` calls | Possible orphan metadata; needs one transaction. |
-| QueryClient `ExecMulti` | One transaction across supplied statements | Reusable concept. The module's version propagates rollback/commit errors and is context-aware. |
-| QueryClient `QueryMulti` | Begins a transaction and returns row handles after commit | Unused and unsafe to port without redesign. |
-| Database initialization | Statements split and executed one-by-one | No migration history, rollback, or safe retry. The module has no provider-neutral runner to replace it yet. |
+- **Embedded legacy SQL:** all 21 files under `utils/query_client/queries/` are in the module: 13 unchanged, 8 fixed (one of them moved). `infrastructure/legacy` itself is unchanged.
+- **Inactive endpoint-stub SQL:** seven files under `stub/lambda/` are design notes only and aren't in the module. `GET_me_clubs_events.sql` is superseded by group 4, `eboard.sql` by group 17, `GET_events.sql`, `eventsId.sql`, and `description.sql` by group 11, and the two `admins/studentId` files by group 22.
+- **Schema and seed history:** the nine older files are in [`migrations/history/`](migrations/history/), unchanged. The three `stub/environment/` SQL files are local experiments and aren't used.
 
 ## Module status
 
-What the module has and lacks, in dependency order. Statuses use the [status legend](#status-legend).
-
 | # | Item | Status | Detail |
 | ---: | --- | --- | --- |
-| 1 | Versioned MySQL migration baseline from the November DDL | ⬜ | Must not re-run destructive or non-idempotent initialization against existing databases. |
-| 2 | Injected MySQL configuration instead of AWS-coupled connection creation | 🟨 | The independent client exists. The AWS Secrets Manager/RDS adapter and the caller cutover don't. |
-| 3 | Full-read SQL loader and context-aware query execution | 🟨 | In the module only; legacy is unchanged. |
-| 4 | Query/transaction integration tests against compatible MySQL | ⬜ | Needed before any handler moves. |
-| 5 | Groups 1–11 and 13–15 ported with parity fixtures for null handling, date bounds, pagination, role precedence, and response mapping | 🟨 | SQL copied; no callers or parity fixtures. |
-| 6 | Groups 12 and 16 repaired and tested | ⬜ | Needed before their API equivalents are exposed. |
-| 7 | Group 29 and the authorization/product questions in the API reference resolved | ❓ | See [Open questions](#open-questions) and the [API's open questions](../api/README.md#open-questions). |
-| 8 | Missing groups 18, 20, 23, and 25–28 | ⬜ | Each is written with its endpoint and policy, not ahead of it; no unused SQL or empty directories. |
-| 9 | The same query suite run against local MySQL and AWS-hosted compatible MySQL | ⬜ | This is what proves hosting independence. |
-| 10 | API callers cut over | ⬜ | Incrementally. [`infrastructure/legacy/`](../infrastructure/legacy/) stays the working reference until parity and rollback plans are reviewed. |
+| 1 | Baseline schema, down file, and seed | ✅ | Applied, dropped, and rebuilt on local MySQL 8.0.46. |
+| 2 | Queries for every endpoint needed Now or Later | ✅ | 29 of 31 groups; see the [summary](#query-group-summary). |
+| 3 | Injected MySQL configuration instead of AWS-coupled connection creation | 🟨 | The independent client exists. The AWS Secrets Manager/RDS adapter and the caller cutover don't. |
+| 4 | Automated query tests against MySQL | ⬜ | The container run was manual. A test that starts MySQL and runs the same checks would keep them from regressing. |
+| 5 | Go models matching the baseline | ⬜ | See [Shared application query access](#shared-application-query-access). |
+| 6 | A migration runner | ⬜ | [Future work](docs/schema-review.md#future-work-a-migration-runner), for when a live database exists. |
+| 7 | The purge job itself (schedule, S3 deletes, retention setting) | ⬜ | Only its SQL exists. |
+| 8 | API callers cut over | ⬜ | [`infrastructure/legacy/`](../infrastructure/legacy/) stays the working reference until parity and rollback plans are reviewed. |
 
 ## Open questions
 
 Product and data decisions the code doesn't settle:
 
+- The purge job's retention period (the tests assume 30 days), and whether a soft-deleted event can be restored within it.
+- Date-only list bounds: midnight in `America/New_York`, or full timestamps with an offset only. The queries take UTC `DATETIME` bounds either way.
 - Whether request-time student sync updates a changed email on an existing row.
-- Whether owner-club authority, event authorship, or admins take precedence in event authorization.
-- Club creator ownership and initial verification behavior.
-- Admin bootstrap, last-admin protection, and admin-to-club response semantics.
-- Owner-only versus e-board-or-owner role administration.
-- Draft visibility, event publication transitions, archival versus `deleted_at`, and physical cleanup.
-- Pagination by joined row versus distinct event, deterministic ordering, and association completeness.
-- Nullable role/email fields and current Go model compatibility.
-- Image/thumbnail metadata ownership, transaction boundaries, replacement, deletion, and storage failure recovery.
+- Whether an event's author or an admin gets management rights beyond the linked clubs' e-board and owners.
+- Admins: bootstrap, last-admin protection, and what "their clubs" means in `GET /admins`.
+- Whether `role=eboard` on the member list should include owners (the queries follow memberships.md, which says it does).
 - Whether unused `student_info` and `event_tags` are requirements or unserved schema. Nothing proposes deleting them.
-- How to baseline existing `STAGING`/`PRODUCTION` databases into a real migration history without recreating resources or data.
 
 ## Files
 
-- `database/README.md`: this reference: schema, query groups, and module status.
-- `database/assets/database-schema.png`: reused current-schema visual.
-- `database/go.mod` and `go.sum`: independent module using the existing Go 1.23.0 directive and Go 1.24.3 toolchain; existing modules are unchanged and no workspace is introduced.
-- `database/models/`: all five source models copied exactly, including fields, tags, types, and existing nullable-field limitations.
-- `database/queries/`: all 21 active SQL files copied exactly into their module paths; both image inserts are in `events/images/confirm/`. No inactive stub or missing query is included.
-- `database/migrations/`: all nine SQL history/seed files copied exactly, without a runner or execution.
-- `database/client/`: provider-independent pool, context-aware query methods, and transaction helpers; no active callers.
-- Offline tests: all 21 query byte lengths/hashes and absence of null padding, reads beyond 4096 bytes, mock transaction success/failure and insert IDs, and model scan compatibility (including preserved NULL-to-string failures). These do not establish SQL correctness or MySQL integration parity.
-- [`infrastructure/legacy/utils/query_client/`](../infrastructure/legacy/utils/query_client/): current application SQL/client source.
-- [`infrastructure/legacy/lambda/internal/database/init/`](../infrastructure/legacy/lambda/internal/database/init/): current initialization/migration source.
-- [`api/README.md`](../api/README.md): endpoint reference index; [`api/LAYOUT.md`](../api/LAYOUT.md): where each endpoint's code goes in the `api/` module.
+- `database/README.md`: this reference.
+- `database/docs/schema-review.md`: the schema decisions, the findings behind the baseline, and future migration work.
+- `database/assets/database-schema.png`: the legacy November schema diagram.
+- `database/go.mod` and `go.sum`: the independent module (Go 1.23.0 directive, Go 1.24.3 toolchain).
+- `database/migrations/schema/`: the baseline up and down files.
+- `database/migrations/seed/`: the development seed.
+- `database/migrations/history/`: the older schema and seed files, never applied.
+- `database/models/`: the five legacy model files, unchanged.
+- `database/queries/`: the 63 query files, `queries.go` (the embed list and `Load`), and the tests.
+- `database/client/`: provider-independent pool, context-aware query methods, and transaction helpers; no callers yet.
 
-Run the independent module's offline unit tests from `database/` with `go test ./...`. Tests use an in-memory SQL mock and a stub dialer; they do not connect to MySQL or AWS. The module has no migration execution, live integration tests, API cutover, or SQL repairs, and the [open questions](#open-questions) are unresolved; see [Module status](#module-status).
-
-The module is source only and unused. It changes no active schema, SQL or API behavior, credentials, database hosting, or deployed resource.
+Run the module's unit tests from `database/` with `go test ./...`. They don't connect to MySQL or AWS.

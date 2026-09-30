@@ -45,6 +45,10 @@ api/
 │       │   ├── list/
 │       │   ├── drafts/
 │       │   └── create/
+│       ├── announcements/
+│       │   ├── list/
+│       │   ├── drafts/
+│       │   └── create/
 │       ├── verification/
 │       │   ├── create/
 │       │   └── delete/
@@ -57,17 +61,28 @@ api/
 │       ├── get/
 │       └── images/
 │           └── get/
+├── announcements/
+│   └── {announcementId}/
+│       └── get/
 ├── auth/
+│   ├── announcements/
+│   │   └── {announcementId}/
+│   │       ├── get/
+│   │       ├── update/
+│   │       ├── delete/
+│   │       └── restore/
 │   └── events/
 │       └── {eventId}/
 │           ├── get/
 │           ├── update/
 │           ├── delete/
+│           ├── restore/
 │           ├── images/
 │           └── thumbnails/
 ├── admins/
 │   ├── list/
 │   ├── create/
+│   ├── purge/
 │   └── {studentId}/
 │       ├── get/
 │       └── delete/
@@ -92,7 +107,7 @@ Route-shaped folders are navigation aids, not a reason to duplicate shared autho
 
 ## Endpoint locations
 
-None of the module paths below exist yet. The SQL for query groups 1–15 is already at its path in `database/queries/`, but no module code calls it (see the [database summary](../database/README.md#query-group-summary)).
+None of the module paths below exist yet. The SQL for every query group except 17 is already at its path in `database/queries/` (30 of 32 groups written, 1 partial; see the [database summary](../database/README.md#query-group-summary)), but no module code calls it. The Queries column gives directories; the exact files each endpoint runs, in order, are on its **Queries** line in [endpoints/](endpoints/).
 
 ### Internal
 
@@ -109,7 +124,7 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`GET /me/clubs`](endpoints/me.md#-get-meclubs) | `api/me/clubs/get/` | `database/queries/me/clubs/list/` | Yes, after extracting the HTTP/JWT and database adapters. |
 | [`GET /me/events`](endpoints/me.md#-get-meevents) | `api/me/events/get/` | `database/queries/me/events/list/` | Yes, after extracting the HTTP/JWT and database adapters. |
 | PDF path `GET /me/clubs/events` | Served by `api/me/events/get/`; the PDF path is added as an alias only if a client needs it. | `database/queries/me/events/list/` | Partial; `GET /me/events` is reusable, and the PDF path itself isn't built. |
-| [`GET /me/clubs/eboard`](endpoints/me.md#-get-meclubseboard) | `api/me/clubs/eboard/get/` | `database/queries/me/clubs/eboard/list/`, or `database/queries/me/clubs/list/` with an explicit role filter. | Partial. |
+| [`GET /me/clubs/eboard`](endpoints/me.md#-get-meclubseboard) | `api/me/clubs/eboard/get/` | `database/queries/me/clubs/list/`, with the rows filtered by role in the API. There's no e-board query of its own ([query group 17](../database/README.md#17-my-e-board-clubs)). | Partial. |
 
 ### Clubs and memberships
 
@@ -118,7 +133,7 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`GET /clubs`](endpoints/clubs.md#-get-clubs) | `api/clubs/list/` | `database/queries/clubs/list/` | Yes, after extracting the HTTP and database adapters. |
 | [`POST /clubs`](endpoints/clubs.md#-post-clubs) | `api/clubs/create/` | `database/queries/clubs/create/` | Yes, after extracting the HTTP/JWT and database adapters. |
 | [`GET /clubs/{clubId}`](endpoints/clubs.md#-get-clubsclubid) | `api/clubs/{clubId}/get/` | `database/queries/clubs/get/` | Yes, after extracting the HTTP and database adapters. |
-| [`PATCH /clubs/{clubId}`](endpoints/clubs.md#-patch-clubsclubid) | `api/clubs/{clubId}/update/` | No query group yet ([schema needs](coverage.md#schema-needs)). | N/A until built. |
+| [`PATCH /clubs/{clubId}`](endpoints/clubs.md#-patch-clubsclubid) | `api/clubs/{clubId}/update/` | `database/queries/clubs/update/` and `database/queries/clubs/tags/replace/` ([query group 30](../database/README.md#30-club-update)). | N/A until built. |
 | [`POST /clubs/{clubId}/members/me`](endpoints/memberships.md#-post-clubsclubidmembersme) | `api/clubs/{clubId}/members/join/` | `database/queries/clubs/members/create/`, or a caller-specific wrapper under `join/`. | Yes, after extracting the HTTP/JWT and database adapters. |
 | [`DELETE /clubs/{clubId}/members/me`](endpoints/memberships.md#-delete-clubsclubidmembersme) | `api/clubs/{clubId}/members/leave/` | `database/queries/clubs/members/leave/` | Partial; the handler and query logic are reusable once the route's authorizer is fixed. |
 | [`GET /clubs/{clubId}/members`](endpoints/memberships.md#-get-clubsclubidmembers) | `api/clubs/{clubId}/members/list/` | `database/queries/clubs/members/list/` | N/A until built. |
@@ -133,17 +148,18 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | --- | --- | --- | --- |
 | [`GET /clubs/{clubId}/events`](endpoints/club-events.md#-get-clubsclubidevents) | `api/clubs/{clubId}/events/list/` | `database/queries/clubs/events/list/` | Yes, after extracting the HTTP and database adapters. |
 | [`POST /clubs/{clubId}/events`](endpoints/club-events.md#-post-clubsclubidevents) | `api/clubs/{clubId}/events/create/` | `database/queries/events/create/`, shared across route adapters. | Partial; validation and orchestration are reusable after the SQL repair, a single transaction, and extracting authorization. |
-| [`GET /clubs/{clubId}/events/drafts`](endpoints/club-events.md#-get-clubsclubideventsdrafts) | `api/clubs/{clubId}/events/drafts/get/`, or an authenticated filter on the shared list service. | `database/queries/clubs/events/list/` with an explicit, authorized status policy. | N/A as an endpoint; the underlying read query is reusable. |
+| [`GET /clubs/{clubId}/events/drafts`](endpoints/club-events.md#-get-clubsclubideventsdrafts) | `api/clubs/{clubId}/events/drafts/get/`, or an authenticated filter on the shared list service. | `database/queries/clubs/events/drafts/`, which fixes the status to `draft` ([query group 21](../database/README.md#21-club-draft-events)). | N/A as an endpoint; the underlying read query is reusable. |
 | [`GET /events`](endpoints/events.md#-get-events) | `api/events/list/` | `database/queries/events/read/` with a list wrapper. | Yes, after extracting the HTTP and database adapters. |
 | [`GET /events/{eventId}`](endpoints/events.md#-get-eventseventid) | `api/events/{eventId}/get/` | `database/queries/events/read/` with a single-event wrapper. | Yes, after extracting the HTTP and database adapters. |
 | PDF paths `GET /events/{eventId}/description` and `/clubs` | No separate endpoint; served by `api/events/{eventId}/get/`, with a subresource adapter only if a client needs one. | `database/queries/events/read/` | Partial as separate routes; the combined behavior is reusable. |
-| [`GET /events/{eventId}/images`](endpoints/events.md#-get-eventseventidimages) | `api/events/{eventId}/images/get/` | `database/queries/events/images/list/` | Partial; needs a query, a posted-visibility policy, and a storage-provider abstraction. |
+| [`GET /events/{eventId}/images`](endpoints/events.md#-get-eventseventidimages) | `api/events/{eventId}/images/get/` | `database/queries/events/read/` (visibility) and `database/queries/events/images/list/` | Partial; needs a storage-provider abstraction. The query and the posted-visibility check exist. |
 | [`GET /auth/events/{eventId}`](endpoints/event-management.md#-get-autheventseventid) | `api/auth/events/{eventId}/get/` | `database/queries/events/read/` and `database/queries/authorization/events/can_manage/`. | Partial; the read and policy primitives exist but aren't combined. |
-| [`GET /auth/events/{eventId}/images`](endpoints/event-management.md#-get-autheventseventidimages) | `api/auth/events/{eventId}/images/get/` | `database/queries/events/images/list/` plus the shared authorization query. | Partial; needs the missing SQL, the policy, and a storage adapter. |
+| [`GET /auth/events/{eventId}/images`](endpoints/event-management.md#-get-autheventseventidimages) | `api/auth/events/{eventId}/images/get/` | `database/queries/events/images/list/` plus the shared authorization query. | Partial; needs the policy and a storage adapter. The SQL exists. |
 | [`PATCH /auth/events/{eventId}`](endpoints/event-management.md#-patch-autheventseventid) | `api/auth/events/{eventId}/update/` | `database/queries/events/update/` | N/A until built. |
 | [`POST /auth/events/{eventId}/thumbnails`](endpoints/event-management.md#-post-autheventseventidthumbnails) | `api/auth/events/{eventId}/thumbnails/presign/` | N/A for signing; the confirm step would use `database/queries/events/thumbnails/confirm/`. | Partial; the signer is reusable behind a storage-provider abstraction, but authorization and confirmation are missing. |
 | [`POST /auth/events/{eventId}/images`](endpoints/event-management.md#-post-autheventseventidimages) | `api/auth/events/{eventId}/images/presign/` and `confirm/` | `database/queries/events/images/confirm/` for the confirm step. | Partial; the signer and confirm behavior are reusable after adding the policy, storage adapter, and transaction. |
 | [`DELETE /auth/events/{eventId}`](endpoints/event-management.md#-delete-autheventseventid) | `api/auth/events/{eventId}/delete/` | `database/queries/events/delete/` | N/A until built. |
+| [`POST /auth/events/{eventId}/restore`](endpoints/event-management.md#-post-autheventseventidrestore) | `api/auth/events/{eventId}/restore/` | `database/queries/events/restore/` and `database/queries/authorization/events/manages_owner_club/`. | N/A until built. |
 
 ### Images
 
@@ -155,17 +171,26 @@ None of the module paths below exist yet. The SQL for query groups 1–15 is alr
 | [`POST /clubs/{clubId}/events/{eventId}/thumbnails/confirm`](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm) | `api/auth/events/{eventId}/thumbnails/confirm/` | `database/queries/events/thumbnails/confirm/` | N/A until built. |
 | [`POST /clubs/{clubId}/events/{eventId}/images`](endpoints/images.md#-post-clubsclubideventseventidimages) | `api/auth/events/{eventId}/images/presign/`, or a club-scoped adapter if that path stays. | N/A for presigning. | Yes, after introducing a storage-provider abstraction and an authorization policy. |
 | [`POST /clubs/{clubId}/events/{eventId}/images/confirm`](endpoints/images.md#-post-clubsclubideventseventidimagesconfirm) | `api/auth/events/{eventId}/images/confirm/`, or a club-scoped adapter if that path stays. | `database/queries/events/images/confirm/` | Yes, after extracting the database and storage adapters and making the confirm step one transaction. |
-| [`GET /clubs/{clubId}/events/{eventId}/images`](endpoints/images.md#-get-clubsclubideventseventidimages) | Public `api/events/{eventId}/images/get/` for posted events, and authenticated `api/auth/events/{eventId}/images/get/` for drafts. | The shared `database/queries/events/images/list/`. | Partial; the response and signing behavior are reusable after adding the SQL, a visibility policy, and a storage-provider abstraction. |
-| [`DELETE /images/{imageId}`](endpoints/images.md#-delete-imagesimageid) | `api/images/{imageId}/delete/` | `database/queries/images/delete/` plus a storage deletion adapter. | N/A until built. |
+| [`GET /clubs/{clubId}/events/{eventId}/images`](endpoints/images.md#-get-clubsclubideventseventidimages) | Public `api/events/{eventId}/images/get/` for posted events, and authenticated `api/auth/events/{eventId}/images/get/` for drafts. | The shared `database/queries/events/images/list/`. | Partial; the response and signing behavior are reusable after adding a visibility policy and a storage-provider abstraction. The module has the SQL the legacy handler is missing. |
+| [`DELETE /images/{imageId}`](endpoints/images.md#-delete-imagesimageid) | `api/images/{imageId}/delete/` | `database/queries/images/get/` and `database/queries/images/delete/`. The S3 object is deleted later, by the purge's storage adapter. | N/A until built. |
 
 ### Admins
 
 | Endpoint | Module path | Queries | Reusable |
 | --- | --- | --- | --- |
-| [`GET /admins`](endpoints/admins.md#-get-admins) | `api/admins/list/` | `database/queries/admins/list/` and a shared `is_admin` query. | N/A until built. |
+| [`GET /admins`](endpoints/admins.md#-get-admins) | `api/admins/list/` | `database/queries/admins/list/` and `database/queries/authorization/admins/is_admin/`. | N/A until built. |
 | [`GET /admins/{studentId}`](endpoints/admins.md#-get-adminsstudentid) | `api/admins/{studentId}/get/` | `database/queries/admins/get/` | Partial; the schema intent is clear, but the stub isn't parameterized, working SQL. |
 | [`POST /admins`](endpoints/admins.md#-post-admins) | `api/admins/create/` | `database/queries/admins/create/` | N/A until built. |
 | [`DELETE /admins/{studentId}`](endpoints/admins.md#-delete-adminsstudentid) | `api/admins/{studentId}/delete/` | `database/queries/admins/delete/` | Partial; only obsolete SQL-shaped notes exist. |
+| [`POST /admins/purge`](endpoints/admins.md#-post-adminspurge) | `api/admins/purge/` | `database/queries/events/purge/`, `database/queries/images/purge/`, and `database/queries/announcements/purge/`, plus the storage adapter for S3 deletes. | N/A until built. |
+| [`GET /clubs/{clubId}/announcements`](endpoints/announcements.md#-get-clubsclubidannouncements) | `api/clubs/{clubId}/announcements/list/` | `database/queries/clubs/announcements/list/` | N/A until built. |
+| [`GET /announcements/{announcementId}`](endpoints/announcements.md#-get-announcementsannouncementid) | `api/announcements/{announcementId}/get/` | `database/queries/announcements/read/` | N/A until built. |
+| [`GET /clubs/{clubId}/announcements/drafts`](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) | `api/clubs/{clubId}/announcements/drafts/get/` | `database/queries/clubs/announcements/drafts/` | N/A until built. |
+| [`GET /auth/announcements/{announcementId}`](endpoints/announcements.md#-get-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/get/` | `database/queries/announcements/read/` and `database/queries/authorization/announcements/can_manage/` | N/A until built. |
+| [`POST /clubs/{clubId}/announcements`](endpoints/announcements.md#-post-clubsclubidannouncements) | `api/clubs/{clubId}/announcements/create/` | `database/queries/announcements/create/` | N/A until built. |
+| [`PATCH /auth/announcements/{announcementId}`](endpoints/announcements.md#-patch-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/update/` | `database/queries/announcements/update/` | N/A until built. |
+| [`DELETE /auth/announcements/{announcementId}`](endpoints/announcements.md#-delete-authannouncementsannouncementid) | `api/auth/announcements/{announcementId}/delete/` | `database/queries/announcements/delete/` | N/A until built. |
+| [`POST /auth/announcements/{announcementId}/restore`](endpoints/announcements.md#-post-authannouncementsannouncementidrestore) | `api/auth/announcements/{announcementId}/restore/` | `database/queries/announcements/restore/` and `database/queries/authorization/announcements/manages_owner_club/` | N/A until built. |
 
 ### Operational
 

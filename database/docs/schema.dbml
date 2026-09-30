@@ -1,0 +1,363 @@
+// schema.dbml
+// The dbdiagram.io (DBML) source for the baseline schema,
+// database/migrations/schema/2026_09_29_baseline_up.sql. Paste the whole file into
+// dbdiagram.io to draw the diagram.
+//
+// The SQL is the source of truth. Update this file in the same change as every
+// schema change, so the diagram never drifts from the baseline or the migrations
+// after it.
+//
+// How the SQL maps to DBML:
+//   - Types are the MySQL types as written in the baseline. The inline ENUM columns
+//     use the named enums below.
+//   - A single-column primary key is a pk setting on its column. A composite primary
+//     key is a pk index in the table's indexes block.
+//   - A single-column UNIQUE key is a unique setting on its column, and the key's name
+//     is in the column note. Every other key is in the table's indexes block under its
+//     SQL name.
+//   - Every foreign key is a named Ref at the end of the file. A many-to-one Ref is
+//     written child > parent. A one-to-one Ref is written parent - child, because
+//     DBML's SQL export puts a one-to-one foreign key on the right-hand column. A Ref without a
+//     delete setting has MySQL's default, RESTRICT: the parent row can't be deleted
+//     while a child row still refers to it.
+//   - DBML has no CHECK constraints or views. The CHECKs are in column notes, and the
+//     three views are described in the project note.
+
+Project hunter_college_clubs {
+  database_type: 'MySQL'
+  Note: '''
+**Hunter College clubs and events: baseline schema (2026-09-29)**
+
+Source: `database/migrations/schema/2026_09_29_baseline_up.sql`. The reasoning behind it is in `database/docs/schema-review.md`.
+
+**Conventions**
+- Event `start_date` and `end_date` are `DATETIME` in UTC, compared with `UTC_TIMESTAMP()`.
+- `created_at`, `updated_at`, `deleted_at` and `posted_at` are `TIMESTAMP`, which MySQL stores in UTC, compared with `CURRENT_TIMESTAMP`.
+- `deleted_at` marks a soft-deleted row (events, announcements, images). Reads skip it. For 30 days an event or announcement can be restored; after that only an admin's purge (`POST /admins/purge`) hard-deletes it. The restore and purge queries both hard-code the 30 days.
+- Every foreign key is named. A Ref with no delete setting is RESTRICT.
+
+**CHECK constraints** (in the column notes)
+- `chk_club_tags_slot`: `club_tags.slot BETWEEN 1 AND 3`.
+- `chk_events_end_after_start`: `events.end_date >= events.start_date`.
+- `chk_announcements_posted_at`: `(status = 'posted') = (posted_at IS NOT NULL)`.
+
+**Views** (not drawn; every event, club and announcement read goes through them)
+- `event_details`: one row per event whose `deleted_at` is NULL, with everything the event object needs: the event's columns; `thumbnail_object_key` and `alt_text` from the flyer's `images` row; `description` from `event_descriptions`; `image_count`, the gallery images other than the flyer; `owner_club_id`, `owner_club_name` and `owner_logo_object_key` from the owner link (NULL when there's none); and `associates`, a JSON array of `{id, name, logoObjectKey}` for the other linked clubs, in no guaranteed order, `[]` when there are none.
+- `club_details`: one row per club: `id`, `name`, `thumbnail_url` (the logo's `object_key`), `website_url` and `description` from `club_info`, `tags` (a JSON array of topic keys in slot order, `[]` when none), `member_count` (every membership: members, e-board and owners), and `verified` (the club has a `verified_clubs` row).
+- `announcement_details`: one row per announcement whose `deleted_at` is NULL: its columns, the owner club's id, name and logo key, and `associates` as in `event_details`.
+'''
+}
+
+// ---------------------------------------------------------------------------
+// Enums. MySQL declares these inline on their columns.
+// ---------------------------------------------------------------------------
+
+// events.status. Allowed: draft -> posted, posted -> cancelled, cancelled -> posted.
+Enum event_status {
+  draft [note: 'Not published. The default.']
+  posted [note: 'Published. Public reads return it.']
+  cancelled [note: 'Called off. Public reads still return it.']
+}
+
+// club_members.role. One role per member.
+Enum club_role {
+  member [note: 'The default.']
+  eboard [note: 'Can manage the club and its events and announcements.']
+  owner [note: 'As eboard, and can change roles. A club never loses its last owner.']
+}
+
+// announcements.status. draft -> posted is the only transition.
+Enum announcement_status {
+  draft [note: 'Not published. The default. body may be NULL.']
+  posted [note: 'Published. posted_at is set.']
+}
+
+// ---------------------------------------------------------------------------
+// Students and admins
+// ---------------------------------------------------------------------------
+
+Table students {
+  id char(36) [pk, not null, note: 'The Cognito sub.']
+  email varchar(255) [null, note: 'Optional: the access tokens the frontend sends carry no email claim.']
+  Note: 'One row per Cognito user, created by the Cognito trigger or by RequireStudent on the first protected request.'
+}
+
+Table student_info {
+  fk_student_id char(36) [pk, not null]
+  username varchar(30) [null, unique, note: 'Unique key uq_student_info_username.']
+  first_name varchar(40) [null]
+  last_name varchar(40) [null]
+  Note: 'Optional username and name, one row per student. Read by the member and admin lists; nothing writes it yet.'
+}
+
+Table admins {
+  fk_student_id char(36) [pk, not null]
+  Note: '''Global administrators: a student is an admin when they have a row. The last admin can't be removed. The first one is inserted by hand (database/README.md, "The first admin").'''
+}
+
+// ---------------------------------------------------------------------------
+// Clubs and membership
+// ---------------------------------------------------------------------------
+
+Table clubs {
+  id int [pk, increment, not null]
+  fk_logo_id char(36) [null, note: 'The logo. One file may be the logo of several clubs.']
+  name varchar(255) [not null, unique, note: 'Unique key uq_clubs_name, under the default case- and accent-insensitive collation.']
+
+  indexes {
+    fk_logo_id [name: 'idx_clubs_logo']
+  }
+
+  Note: 'A club: its identity, unique name and logo.'
+}
+
+Table club_info {
+  fk_club_id int [pk, not null]
+  website_url varchar(255) [null]
+  description text [null]
+  Note: 'A club\'s website and description, one row per club. Upserted by PATCH /clubs/{clubId}.'
+}
+
+Table club_members {
+  fk_student_id char(36) [not null]
+  fk_club_id int [not null]
+  role club_role [not null, default: 'member', note: '''MySQL: ENUM('member', 'eboard', 'owner'). Exactly one role per member; the e-board list is role IN ('eboard', 'owner'). A club's last owner can't be demoted and can't leave; the role-update and leave queries enforce it.''']
+
+  indexes {
+    (fk_student_id, fk_club_id) [pk]
+    (fk_club_id, role) [name: 'idx_club_members_club_role']
+  }
+
+  Note: 'Club membership, with the member\'s one role.'
+}
+
+Table verified_clubs {
+  fk_club_id int [pk, not null]
+  Note: '''Clubs approved for the public directory (GET /clubs?verified=true). A filter, not a role. MySQL table comment: "Table for making sure clubs are allowed to be shown to account for bad actors creating random new clubs".'''
+}
+
+Table topics {
+  tag varchar(40) [pk, not null, note: 'CHARACTER SET utf8mb4 COLLATE utf8mb4_bin: case-sensitive, so only the exact lowercase keys match. ON UPDATE CASCADE in club_tags lets a key be renamed with one UPDATE here.']
+  Note: '''The fixed list of club topics, held as data. The baseline inserts six: technology, arts, community, women in stem, career, sports.'''
+}
+
+Table club_tags {
+  fk_club_id int [not null]
+  slot tinyint [not null, note: 'The topic\'s position, 1 to 3 (CHECK chk_club_tags_slot: slot BETWEEN 1 AND 3), so a club has at most three topics.']
+  tag varchar(40) [not null, note: 'A topic key. CHARACTER SET utf8mb4 COLLATE utf8mb4_bin.']
+
+  indexes {
+    (fk_club_id, slot) [pk]
+    (fk_club_id, tag) [unique, name: 'uq_club_tags_club_tag']
+    tag [name: 'idx_club_tags_tag']
+  }
+
+  Note: 'A club\'s topics, in the order the club chose them. Replaced as a whole by POST /clubs and PATCH /clubs/{clubId}.'
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+Table events {
+  id int [pk, increment, not null]
+  fk_author_id char(36) [null, note: 'The student who created it. Set to NULL if that student is deleted.']
+  fk_thumbnail_id char(36) [null, note: 'The flyer. One file may be the flyer of several events.']
+  title varchar(255) [not null]
+  location varchar(255) [null, note: 'May be NULL on a draft. Posting requires one.']
+  rsvp_link varchar(255) [null]
+  status event_status [not null, default: 'draft', note: '''MySQL: ENUM('draft', 'posted', 'cancelled'). The life of an event that still exists; deleting is deleted_at, not a status. Allowed: draft -> posted, posted -> cancelled, cancelled -> posted; nothing goes back to draft. The status UPDATE queries enforce it.''']
+  start_date datetime [not null, note: 'UTC.']
+  end_date datetime [not null, note: 'UTC. CHECK chk_events_end_after_start: end_date >= start_date.']
+  timezone varchar(60) [not null, default: 'America/New_York', note: 'The IANA zone the event takes place in. For display and calendar export only; start_date and end_date are UTC.']
+  created_at timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'ON UPDATE CURRENT_TIMESTAMP. Orders the drafts list.']
+  deleted_at timestamp [null, note: 'Set by DELETE /auth/events/{eventId} (soft delete). Every read skips the event. Restorable for 30 days; after that POST /admins/purge hard-deletes it.']
+
+  indexes {
+    (status, start_date) [name: 'idx_events_status_start']
+    fk_thumbnail_id [name: 'idx_events_thumbnail']
+    fk_author_id [name: 'idx_events_author']
+    deleted_at [name: 'idx_events_deleted']
+  }
+
+  Note: 'An event: its fields, status, UTC times and soft-delete marker. Read through the event_details view.'
+}
+
+Table event_descriptions {
+  fk_event_id int [pk, not null]
+  description text [null]
+  Note: 'One description per event. Upserted by PATCH /auth/events/{eventId}.'
+}
+
+Table event_tags {
+  fk_event_id int [not null]
+  tag varchar(255) [not null]
+
+  indexes {
+    (fk_event_id, tag) [pk]
+  }
+
+  Note: 'Free-text event tags. Nothing reads or writes them yet.'
+}
+
+Table events_to_clubs {
+  fk_event_id int [not null]
+  fk_club_id int [not null]
+  club_is_event_owner bool [not null, default: false, note: 'TRUE for the club that owns (hosts) the event, FALSE for a co-host. At most one owner per event.']
+
+  indexes {
+    (fk_event_id, fk_club_id) [pk]
+    fk_club_id [name: 'idx_events_to_clubs_club']
+    `IF(club_is_event_owner, fk_event_id, NULL)` [unique, name: 'uq_events_to_clubs_one_owner', note: 'Functional index: only owner rows have a key, so each event has at most one owner club.']
+  }
+
+  Note: 'The clubs linked to an event: one owner club and any co-hosts. Event authorization reads it.'
+}
+
+Table event_images {
+  fk_event_id int [not null]
+  fk_image_id char(36) [not null]
+  created_at timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'Orders the gallery. It is on the link, not the file, because one file may sit in several galleries.']
+
+  indexes {
+    (fk_event_id, fk_image_id) [pk]
+    fk_image_id [name: 'idx_event_images_image']
+  }
+
+  Note: 'An event\'s gallery. Deleting an image a gallery still uses is refused.'
+}
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+Table images {
+  id char(36) [pk, not null, note: 'The UUID the upload signer returned.']
+  fk_club_id int [null, note: 'The owning club, whose e-board and owners (and admins) may take the file down. Nullable for a future upload with no club.']
+  fk_uploaded_by char(36) [null, note: 'The uploader. Set to NULL if that student is deleted.']
+  purpose varchar(100) [not null, note: '''Which upload flow created the file: 'club-thumbnail', 'event-thumbnail' or 'event-image'. Set once at confirm and not constrained. Display decisions come from the references, never from purpose.''']
+  object_key varchar(255) [not null, unique, note: 'The S3 key. Unique key uq_images_object_key: one row per stored file. The API signs it into a URL; no URL is stored.']
+  filename varchar(255) [null]
+  mimetype varchar(255) [not null]
+  alt_text varchar(1000) [null, note: 'Describes the image, so it stays with the file across uses. The flyer confirm sets it; event reads return it as altText.']
+  created_at timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  deleted_at timestamp [null, note: 'Soft delete: set when a replaced logo or flyer has no other use (release), by a takedown (DELETE /images/{imageId}), or by the purge for the unshared files of the events it removes. A referenced image never has it set, except through an event that is itself soft-deleted. After 30 days POST /admins/purge removes the row, then the S3 object.']
+
+  indexes {
+    fk_club_id [name: 'idx_images_club']
+    deleted_at [name: 'idx_images_deleted']
+  }
+
+  Note: 'One row per stored file. Club logos, event flyers and gallery photos reference a row, and one file may have several uses.'
+}
+
+// ---------------------------------------------------------------------------
+// Announcements
+// ---------------------------------------------------------------------------
+
+Table announcements {
+  id int [pk, increment, not null]
+  fk_author_id char(36) [null, note: 'The student who created it. Set to NULL if that student is deleted.']
+  title varchar(255) [not null]
+  body text [null, note: 'May be NULL on a draft. Posting requires one.']
+  status announcement_status [not null, default: 'draft', note: '''MySQL: ENUM('draft', 'posted'). draft -> posted is the only transition, and it needs a body.''']
+  posted_at timestamp [null, note: '''When it was posted: set when it is created as posted or moves draft -> posted, and kept by a restore. Orders the posted lists, newest first. CHECK chk_announcements_posted_at: (status = 'posted') = (posted_at IS NOT NULL), so it is set exactly when status is posted.''']
+  created_at timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'ON UPDATE CURRENT_TIMESTAMP. Orders the drafts list.']
+  deleted_at timestamp [null, note: 'Soft delete, as for events: every read skips it, it can be restored for 30 days, and after that POST /admins/purge hard-deletes it.']
+
+  indexes {
+    (status, posted_at) [name: 'idx_announcements_status_posted']
+    fk_author_id [name: 'idx_announcements_author']
+    deleted_at [name: 'idx_announcements_deleted']
+  }
+
+  Note: '''Updates a club's e-board posts, modelled on events. Read through the announcement_details view.'''
+}
+
+Table announcements_to_clubs {
+  fk_announcement_id int [not null]
+  fk_club_id int [not null]
+  club_is_announcement_owner bool [not null, default: false, note: 'TRUE for the club that posted it, FALSE for a co-owning club. At most one owner per announcement.']
+
+  indexes {
+    (fk_announcement_id, fk_club_id) [pk]
+    fk_club_id [name: 'idx_announcements_to_clubs_club']
+    `IF(club_is_announcement_owner, fk_announcement_id, NULL)` [unique, name: 'uq_announcements_to_clubs_one_owner', note: 'Functional index: only owner rows have a key, so each announcement has at most one owner club.']
+  }
+
+  Note: 'The clubs an announcement belongs to: one owner club and any others (HunterHacks for the CS clubs, say).'
+}
+
+// ---------------------------------------------------------------------------
+// Table groups
+// ---------------------------------------------------------------------------
+
+TableGroup students_and_admins {
+  students
+  student_info
+  admins
+}
+
+TableGroup clubs_and_membership {
+  clubs
+  club_info
+  club_members
+  verified_clubs
+  topics
+  club_tags
+}
+
+TableGroup events {
+  events
+  event_descriptions
+  event_tags
+  events_to_clubs
+  event_images
+}
+
+TableGroup images {
+  images
+}
+
+TableGroup announcements {
+  announcements
+  announcements_to_clubs
+}
+
+// ---------------------------------------------------------------------------
+// Foreign keys, named as in the SQL
+// ---------------------------------------------------------------------------
+
+// Students and admins
+Ref fk_student_info_student: students.id - student_info.fk_student_id [delete: cascade]
+Ref fk_admins_student: students.id - admins.fk_student_id
+
+// Images
+Ref fk_images_uploaded_by: images.fk_uploaded_by > students.id [delete: set null]
+Ref fk_images_club: images.fk_club_id > clubs.id
+
+// Clubs and membership
+Ref fk_clubs_logo: clubs.fk_logo_id > images.id
+Ref fk_club_info_club: clubs.id - club_info.fk_club_id [delete: cascade]
+Ref fk_club_members_student: club_members.fk_student_id > students.id
+Ref fk_club_members_club: club_members.fk_club_id > clubs.id
+Ref fk_verified_clubs_club: clubs.id - verified_clubs.fk_club_id [delete: cascade]
+Ref fk_club_tags_club: club_tags.fk_club_id > clubs.id [delete: cascade]
+Ref fk_club_tags_topic: club_tags.tag > topics.tag [update: cascade]
+
+// Events
+Ref fk_events_author: events.fk_author_id > students.id [delete: set null]
+Ref fk_events_thumbnail: events.fk_thumbnail_id > images.id
+Ref fk_event_descriptions_event: events.id - event_descriptions.fk_event_id [delete: cascade]
+Ref fk_event_tags_event: event_tags.fk_event_id > events.id [delete: cascade]
+Ref fk_events_to_clubs_event: events_to_clubs.fk_event_id > events.id [delete: cascade]
+Ref fk_events_to_clubs_club: events_to_clubs.fk_club_id > clubs.id
+Ref fk_event_images_event: event_images.fk_event_id > events.id [delete: cascade]
+Ref fk_event_images_image: event_images.fk_image_id > images.id
+
+// Announcements
+Ref fk_announcements_author: announcements.fk_author_id > students.id [delete: set null]
+Ref fk_announcements_to_clubs_announcement: announcements_to_clubs.fk_announcement_id > announcements.id [delete: cascade]
+Ref fk_announcements_to_clubs_club: announcements_to_clubs.fk_club_id > clubs.id

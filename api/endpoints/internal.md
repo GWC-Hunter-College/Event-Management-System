@@ -22,6 +22,8 @@ Creates or updates the user's `students` row from Cognito's `sub` and `email`, s
 
 - Two copies are wired to the same user pool. `PostConfirmUserUpsert` in `AuthorizationStack` writes to `PRODUCTION` only when `PRODUCTION_STATUS` is `true`, otherwise `STAGING`. `PostConfirmUserUpsertDev` in `DevApiStack` always writes to `STAGING`. A user pool holds one function per trigger, so whichever stack updated it last wins, and deleting either stack's custom resource clears both triggers.
 
+**Queries** (1): 1. [`students/ensure/UPSERT_student.sql`](../../database/queries/students/ensure/UPSERT_student.sql) (write, `sub` and `email`)
+
 **Code:** handler [`lambda/internal/auth/postConfirm/upsert.go`](../../infrastructure/legacy/lambda/internal/auth/postConfirm/upsert.go) · wired by [`authorization.go`](../../infrastructure/legacy/internal/stack/authorization.go) and [`developmentApi.go`](../../infrastructure/legacy/internal/stack/developmentApi.go) · [query group 1](../../database/README.md#1-student-existence-and-upsert)
 
 ## 🔵 RequireStudent (request-time student sync)
@@ -45,13 +47,15 @@ It never updates the email of an existing row.
 - Handlers map its errors differently: `POST /clubs` returns `400`, the other handlers return `500`, and the `/me` handlers return `400` only for a missing `sub`.
 - The frontend sends access tokens, which have no `email` claim, so rows created here get a `NULL` email, and a `NULL` email breaks [`GET /me`](me.md#-get-me).
 
+**Queries** (3): 1. [`students/ensure/EXISTS_student_by_sub.sql`](../../database/queries/students/ensure/EXISTS_student_by_sub.sql) (read) → 2. [`students/ensure/UPSERT_student.sql`](../../database/queries/students/ensure/UPSERT_student.sql) or [`students/ensure/UPSERT_student_sub_only.sql`](../../database/queries/students/ensure/UPSERT_student_sub_only.sql) (write, only when the row is missing: with the `email` claim, or `sub` only). Every 🔴 route runs these first; the other Queries lines leave them out.
+
 **Code:** [`utils/auth/ensure_student.go`](../../infrastructure/legacy/utils/auth/ensure_student.go) · [query group 1](../../database/README.md#1-student-existence-and-upsert)
 
 ## 🔵 Club role check
 
 `AuthorizeStudentClub(qc, sub, clubId)` returns true if the student is an e-board member **or** owner of the club.
 
-**SQL:** [`authorization/IS_student_authorized_club.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_club.sql) matches `member_is_eboard = 1 OR member_is_owner = 1`.
+**SQL (legacy):** [`authorization/IS_student_authorized_club.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_club.sql) matches `member_is_eboard = 1 OR member_is_owner = 1`. The database module's version, under Queries below, reads the baseline's single role column: `role IN ('eboard', 'owner')` ([query group 13](../../database/README.md#13-club-authorization)).
 
 **Errors:** `ErrNoSub` for an empty `sub`; `ErrBadClub` when `clubId <= 0`.
 
@@ -62,13 +66,15 @@ It never updates the email of an existing row.
 - It isn't enough for owner-only rules such as [`PUT /clubs/{clubId}/members/roles`](memberships.md#-put-clubsclubidmembersroles).
 - A duplicate copy lives in [`lambda/internal/auth/club_authorization/`](../../infrastructure/legacy/lambda/internal/auth/club_authorization/club_authorization.go). The two are identical in purpose and neither is called.
 
+**Queries** (1): 1. [`authorization/clubs/can_manage/IS_student_authorized_club.sql`](../../database/queries/authorization/clubs/can_manage/IS_student_authorized_club.sql) (auth, e-board or owner). The other club rules have their own checks: [`IS_club_owner.sql`](../../database/queries/authorization/clubs/is_owner/IS_club_owner.sql) (owner only, for role changes) and [`IS_club_member.sql`](../../database/queries/authorization/clubs/is_member/IS_club_member.sql) (any membership). The endpoints that use them list them.
+
 **Code:** [`utils/auth/club_authorization.go`](../../infrastructure/legacy/utils/auth/club_authorization.go) · [query group 13](../../database/README.md#13-club-authorization)
 
 ## 🔵 Event role check
 
 `AuthorizeStudentEvent(ctx, qc, sub, eventId)` returns true if the student is an e-board member or owner of **any** club linked to the event, so authorization doesn't depend on a single `clubId`.
 
-**SQL:** [`authorization/IS_student_authorized_event.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_event.sql).
+**SQL (legacy):** [`authorization/IS_student_authorized_event.sql`](../../infrastructure/legacy/utils/query_client/queries/authorization/IS_student_authorized_event.sql). The database module's version, under Queries below, reads the baseline's `role` column.
 
 **Errors:** `ErrNoSub` for an empty `sub`; `ErrBadEvent` when `eventId <= 0`.
 
@@ -78,23 +84,29 @@ It never updates the email of an existing row.
 
 - A duplicate copy lives in [`lambda/internal/auth/event_authorization/`](../../infrastructure/legacy/lambda/internal/auth/event_authorization/event_authorization.go).
 
+**Queries** (1): 1. [`authorization/events/can_manage/IS_student_authorized_event.sql`](../../database/queries/authorization/events/can_manage/IS_student_authorized_event.sql) (auth, e-board or owner of any linked club). Restore uses the narrower [`IS_student_owner_club_manager.sql`](../../database/queries/authorization/events/manages_owner_club/IS_student_owner_club_manager.sql) (the owning club only). Announcements have the same two checks under [`authorization/announcements/`](../../database/queries/authorization/announcements/).
+
 **Code:** [`utils/auth/event_authorization.go`](../../infrastructure/legacy/utils/auth/event_authorization.go) · [query group 14](../../database/README.md#14-event-authorization)
 
 ## 🔵 Admin check
 
 Answers "is the caller an admin?", meaning "does the caller have a row in `admins`?". Every [admin route](admins.md) needs it (PDF), and so do the [verification writes](verification.md) if they're admin-only.
 
-**Status:** ⬜ Not built. No query or helper reads `admins`.
+**Status:** ⬜ Not built. The query exists; no helper or handler calls it yet.
 
-**Plan:** a shared `is_admin` query in [query group 22](../../database/README.md#22-admin-crud).
+**Queries** (1): 1. [`authorization/admins/is_admin/IS_admin.sql`](../../database/queries/authorization/admins/is_admin/IS_admin.sql) (auth)
+
+**Plan:** [query group 22](../../database/README.md#22-admin-crud).
 
 ## 🔵 Image metadata write (PDF `POST /images`)
 
 The PDF's internal function for storing an image's metadata after it's uploaded to S3. Its planned input is `{ eventId: number | null, clubId: number | null, purpose: string, objectKey: string }`. Per the PDF, `purpose` and `objectKey` are "given to you" and must not be modified.
 
-**Status:** ⬜ Not built as a shared function. The same insert ([`images/INSERT_image.sql`](../../infrastructure/legacy/utils/query_client/queries/images/INSERT_image.sql)) runs inside the event-image [confirm route](images.md#-post-clubsclubideventseventidimagesconfirm), which has no auth.
+**Status:** ⬜ Not built as a shared function. The legacy insert ([`images/INSERT_image.sql`](../../infrastructure/legacy/utils/query_client/queries/images/INSERT_image.sql)) runs inside the event-image [confirm route](images.md#-post-clubsclubideventseventidimagesconfirm), which has no auth. The module's version, under Queries below, also stores the owning club, the uploader, and the alt text.
 
 **Notes:** build it as a shared service that each route-specific confirm handler calls. Don't expose a public generic write just because the PDF's label looks like an HTTP path; it's blue (internal) in the PDF.
+
+**Queries** (1): 1. [`images/create/INSERT_image.sql`](../../database/queries/images/create/INSERT_image.sql) (write). Each confirm route runs it inside its own transaction.
 
 **Plan:** PDF "Endpoints Revamp", p. 19 · [query group 15](../../database/README.md#15-event-image-metadata-confirmation)
 

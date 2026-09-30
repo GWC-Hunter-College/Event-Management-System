@@ -1,22 +1,38 @@
--- Grabs every single event that is 'posted'
--- Filters with startDate and endDate parameters if given (everything after start and before end)
--- Returns in ascending order by start_date (for better viewing)
--- Paginates with limit and offset parameters when given
-
-SELECT 
-	ec.fk_club_id AS club_id, 
-	ec.club_is_event_owner AS is_owner,
-    i.object_key AS object_key,
-	e.*,
-    ed.description AS description
-FROM events e
-INNER JOIN events_to_clubs ec ON e.id = ec.fk_event_id
-INNER JOIN clubs c ON ec.fk_club_id = c.id
-LEFT JOIN images i ON c.fk_logo_id = i.id
-LEFT JOIN event_descriptions ed ON e.id = ed.fk_event_id
-WHERE status LIKE ?
-    AND e.id LIKE ?
-    AND e.start_date > ?
-    AND e.end_date < ?
-ORDER BY e.start_date ASC
+-- SELECT_events.sql
+-- Does: lists public events (posted and cancelled), one row per event, so paging
+--   counts events rather than event-to-club rows.
+-- Used by: GET /events
+-- Params, in order:
+--   1. when: 'upcoming' (not ended yet, start ascending), 'past' (ended, start
+--      descending), or NULL (no time filter, start ascending). The API rejects other values.
+--   2. range start, UTC DATETIME or NULL (inclusive)
+--   3. range end, UTC DATETIME or NULL (exclusive)
+--   4. limit: 1 to 100, default 50, enforced by the API
+--   5. offset: page * limit
+-- Date range: an event matches when it overlaps [range start, range end). The API
+--   turns startDate=YYYY-MM-DD into 00:00 that day in America/New_York, and
+--   endDate=YYYY-MM-DD into 00:00 the next day there (so the whole day is included),
+--   both converted to UTC. Full timestamps with an offset are converted to UTC as given.
+-- Returns: event_details rows (see the baseline for the columns).
+SELECT ed.*
+FROM event_details ed
+CROSS JOIN (
+  SELECT
+    CAST(? AS CHAR(8)) AS when_filter,
+    CAST(? AS DATETIME) AS start_bound,
+    CAST(? AS DATETIME) AS end_bound
+) p
+WHERE ed.status IN ('posted', 'cancelled')
+  AND (
+    p.when_filter IS NULL
+    OR (p.when_filter = 'upcoming' AND ed.end_date > UTC_TIMESTAMP())
+    OR (p.when_filter = 'past' AND ed.end_date <= UTC_TIMESTAMP())
+  )
+  AND (p.end_bound IS NULL OR ed.start_date < p.end_bound)
+  AND (p.start_bound IS NULL OR ed.end_date > p.start_bound OR ed.start_date >= p.start_bound)
+ORDER BY
+  CASE WHEN p.when_filter = 'past' THEN ed.start_date END DESC,
+  CASE WHEN p.when_filter = 'past' THEN ed.id END DESC,
+  ed.start_date ASC,
+  ed.id ASC
 LIMIT ? OFFSET ?;

@@ -22,6 +22,8 @@ Liveness check that returns a fixed greeting. Both APIs register it. It only pro
 
 **Open:** whether to add a separate readiness check later.
 
+**Queries:** none: it returns a fixed greeting and touches no database or storage.
+
 **Code:** route [`test_routes.go`](../../infrastructure/legacy/gateway/routes/test_routes.go) · handler [`test/ping/main.go`](../../infrastructure/legacy/lambda/api/test/ping/main.go)
 
 ## 🟢 GET `/database/test`
@@ -46,5 +48,7 @@ Opens a MySQL connection and runs `SELECT 1 + 1`. **It's dormant:** the route he
 
 - Its test query is embedded in the handler rather than being an application query.
 - It isn't part of the public API design. Equivalent checks belong in protected diagnostics or integration tests.
+
+**Queries:** none from `database/queries/`: the handler embeds its own `SELECT 1 + 1`.
 
 **Code:** route helper [`database_routes.go`](../../infrastructure/legacy/gateway/routes/database_routes.go) · integration [`test_database.go`](../../infrastructure/legacy/gateway/integrations/test_database.go) · handler [`database/test/main.go`](../../infrastructure/legacy/lambda/api/database/test/main.go)

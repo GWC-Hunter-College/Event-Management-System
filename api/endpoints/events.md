@@ -1,6 +1,6 @@
 # Events
 
-Public reads of **posted** events. Drafted and archived events never appear here; the manager reads for them are the planned (⬜) [`/auth/events`](event-management.md) routes. A club's event list and event creation are in [club-events.md](club-events.md), and event images are in [images.md](images.md).
+Public reads of **posted** events. Drafts and deleted events never appear here; the manager reads for them are the planned (⬜) [`/auth/events`](event-management.md) routes. A club's event list and event creation are in [club-events.md](club-events.md), and event images are in [images.md](images.md).
 
 Routes are registered in [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go). Response shapes come from the Go structs named below; example values are made up, following the sanitized examples in the [implementation's event docs](../../infrastructure/legacy/docs/api/events.md).
 
@@ -111,7 +111,7 @@ Lists carry the flyer (`thumbnailUrl`) and `imageCount`, not the gallery ([decis
 | Query param | Default | Rule |
 | --- | --- | --- |
 | `when` | none | New. `upcoming`: events that haven't ended, ordered by start time ascending. `past`: events that have ended, ordered by start time descending. Anything else is `400`. |
-| `startDate`, `endDate` | none | Optional date bounds, as today but ISO 8601. Without `when`, results are ordered by start time ascending. |
+| `startDate`, `endDate` | none | Optional. A date (`YYYY-MM-DD`) covers the whole day in `America/New_York`: `startDate=2026-10-01` starts at 00:00 on October 1, and `endDate=2026-10-31` ends just before 00:00 on November 1. A full ISO 8601 timestamp with an offset is taken as given; `endDate` is always exclusive. An event matches when it overlaps the range, so a multi-day event that started before `startDate` is included ([decision 10](../README.md#decisions)). Without `when`, results are ordered by start time ascending. Anything else is `400`. |
 | `limit` | `50` | Counts events, not joined rows. `1`–`100`; anything else is `400` `Invalid limit. Must be between 1 and 100.` |
 | `page` | `0` | As today, counted in events. |
 
@@ -119,16 +119,17 @@ The Club page needs two calls: `when=upcoming` for its Upcoming section and `whe
 
 ## Event status
 
-The database stores `events.status` as `drafted`, `posted`, or `archived`. The frontend uses `draft`, `posted`, and `cancelled`. **Proposed** API vocabulary (Need: **Now**):
+The deployed (legacy) database stores `events.status` as `drafted`, `posted`, or `archived`. The frontend uses `draft`, `posted`, and `cancelled`. The [baseline schema](../../database/migrations/schema/2026_09_29_baseline_up.sql) stores the API's words directly. **Proposed** API vocabulary (Need: **Now**):
 
 | API value | Stored as | Who sees it | Meaning |
 | --- | --- | --- | --- |
-| `draft` | `drafted` | The club's e-board and owners, through the [drafts list](club-events.md#-get-clubsclubideventsdrafts) and [`GET /auth/events/{eventId}`](event-management.md#-get-autheventseventid). | Not published. |
+| `draft` | `draft` | The club's e-board and owners, through the [drafts list](club-events.md#-get-clubsclubideventsdrafts) and [`GET /auth/events/{eventId}`](event-management.md#-get-autheventseventid). | Not published. The default when an event is created. |
 | `posted` | `posted` | Everyone. | Published. |
-| `cancelled` | `cancelled` (new enum value, new dated migration) | Everyone. Stays in public lists with its details, so people who planned to go find out. | Called off. Set with [`PATCH`](event-management.md#-patch-autheventseventid). |
-| `archived` | `archived` | Managers only, through `GET /auth/events/{eventId}`. Never in public reads. | Removed from listings. Set with [`DELETE`](event-management.md#-delete-autheventseventid). |
+| `cancelled` | `cancelled` | Everyone. Stays in public lists with its details, so people who planned to go find out. | Called off. Set with [`PATCH`](event-management.md#-patch-autheventseventid). |
 
-Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/events`, `GET /me/events`) return `posted` and `cancelled`, and exclude rows with `deleted_at` set.
+There's no `archived` status ([decision 2](../README.md#decisions)). Deleting an event with [`DELETE`](event-management.md#-delete-autheventseventid) is a soft delete: it sets `deleted_at`, and from then on **every** read, public or manager, treats the event as not found. For 30 days a deleted event can be [restored](event-management.md#-post-autheventseventidrestore); after that, an admin's [purge](admins.md#-post-adminspurge) removes it for good ([decisions 8 and 9](../README.md#decisions)).
+
+Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/events`, `GET /me/events`) return `posted` and `cancelled`, and never deleted events.
 
 **Allowed transitions** ([decision 2](../README.md#decisions), 2026-09-29):
 
@@ -137,9 +138,8 @@ Public reads (`GET /events`, `GET /events/{eventId}`, `GET /clubs/{clubId}/event
 | `draft` | `posted` | [`PATCH`](event-management.md#-patch-autheventseventid) with `"status": "posted"` |
 | `posted` | `cancelled` | `PATCH` with `"status": "cancelled"` |
 | `cancelled` | `posted` | `PATCH` with `"status": "posted"` |
-| any | `archived` | [`DELETE`](event-management.md#-delete-autheventseventid); `PATCH` can't set `archived` |
 
-Nothing goes back to `draft`, and nothing leaves `archived`. Saving a draft's fields without a `status` isn't a transition. Any other change is `400`.
+Nothing goes back to `draft`. Saving a draft's fields without a `status` isn't a transition. Any other change is `400`. The SQL enforces the table itself: each status `UPDATE` lists its allowed starting statuses, so a disallowed change affects no rows ([queries](../../database/README.md#transactions)). A deleted event can't change status at all.
 
 ## 🟢 GET `/events`
 
@@ -181,13 +181,15 @@ No matches returns `200` with `"events": []`.
 - Take the [proposed list parameters](#proposed-list-parameters): `limit` defaults to 50 (maximum 100) and counts events; `when=upcoming` orders by start ascending, `when=past` descending.
 - Unchanged: access 🟢, no role, and the `{"message", "events"}` envelope. The frontend sends `when=upcoming`.
 
+**Queries** (1): 1. [`events/read/SELECT_events.sql`](../../database/queries/events/read/SELECT_events.sql) (read)
+
 **Code:** route [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go) · handler [`events/get.go`](../../infrastructure/legacy/lambda/api/events/get.go) · SQL [`events/SELECT_events.sql`](../../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) · [query group 11](../../database/README.md#11-public-and-composite-event-read)
 
 ## 🟢 GET `/events/{eventId}`
 
 Returns one posted event with its description and linked clubs. The frontend's Event page (`/event/:eventId`) calls it.
 
-**Auth:** 🟢 Public. The hard-coded `posted` filter hides drafted and archived events.
+**Auth:** 🟢 Public. The hard-coded `posted` filter hides drafted and archived events. (That describes the deployed handler; the proposed read also returns `cancelled` and never returns deleted events.)
 
 **Path params:** `eventId`, required and non-empty. It isn't parsed as an integer (see known issues).
 
@@ -220,6 +222,8 @@ Returns one posted event with its description and linked clubs. The frontend's E
 
 **Covers two PDF subresources:** the planning PDF lists `GET /events/{eventId}/description` and `GET /events/{eventId}/clubs` as separate public routes. This response already includes `description` and `owners`, so the design folds both into this endpoint instead of giving them routes of their own. Hard-coded stubs for both paths exist only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go): [`description/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/description/get.go) (with stale SQL in [`description.sql`](../../infrastructure/legacy/stub/lambda/events/eventId/description/description.sql)) and [`clubs/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/clubs/get.go). If a client ever needs those paths, add a thin adapter over this read rather than a second copy of the query.
 
+**Queries** (2): 1. [`events/read/SELECT_event.sql`](../../database/queries/events/read/SELECT_event.sql) (read, `public_only` `TRUE`; no row is `404`) → 2. [`events/images/list/SELECT_event_images.sql`](../../database/queries/events/images/list/SELECT_event_images.sql) (read, `images`)
+
 **Code:** route [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go) · handler [`events/eventId/get.go`](../../infrastructure/legacy/lambda/api/events/eventId/get.go) · SQL [`events/SELECT_events.sql`](../../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) · [query group 11](../../database/README.md#11-public-and-composite-event-read)
 
 ## 🟢 GET `/events/{eventId}/images`
@@ -236,6 +240,8 @@ Public image gallery for a posted event. Per the PDF, it first checks that the e
 
 **Status:** ⬜ Not built. An inactive, hard-coded stub exists in [`stub/lambda/events/eventId/images/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/images/get.go); don't treat its response as a contract. The deployed [`GET /clubs/{clubId}/events/{eventId}/images`](images.md#-get-clubsclubideventseventidimages) is broken (missing SQL) and checks neither posted status nor roles.
 
-**Needs:** the event-image list query, which is the missing `images`/`event_images` join ([query group 16](../../database/README.md#16-event-image-list)), plus a posted-visibility check and a storage adapter.
+**Needs:** a storage adapter to sign the URLs. The gallery query and the visibility check exist ([query group 16](../../database/README.md#16-event-image-list)).
+
+**Queries** (2): 1. [`events/read/SELECT_event_status.sql`](../../database/queries/events/read/SELECT_event_status.sql) (read, `404` unless `posted` or `cancelled`) → 2. [`events/images/list/SELECT_event_images.sql`](../../database/queries/events/images/list/SELECT_event_images.sql) (read)
 
 **Plan:** PDF "Endpoints Revamp", p. 17.

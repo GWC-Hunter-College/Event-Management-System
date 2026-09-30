@@ -62,9 +62,15 @@ There's no live database, so the schema is one baseline that creates everything 
 
 Once a real database exists, changes go in new dated migrations after the baseline. Why the baseline looks the way it does, and the decisions behind it, are in the [schema review](docs/schema-review.md). What a migration runner will need is [future work](docs/schema-review.md#future-work-a-migration-runner).
 
+### Diagram
+
+[`docs/schema.dbml`](docs/schema.dbml) is the diagram source: the baseline in [dbdiagram.io](https://dbdiagram.io)'s DBML, with every table, column, key, and foreign key (named, with its delete behavior), the three enums, and notes on each table and on the columns that need one. Paste the file into dbdiagram.io to draw it. DBML has no CHECK constraints or views, so the CHECKs are in column notes and the three views are described in the project note.
+
+**Update `schema.dbml` in the same change as every schema change**, so the diagram never drifts from the SQL.
+
 ![Legacy (November) database schema](assets/database-schema.png)
 
-The diagram shows the November schema that legacy deploys. The baseline adds `topics` and `club_tags`, the image columns, `club_members.role` in place of the two flags, the announcement tables, and the three views, and removes `archived`; see the table below.
+[`assets/database-schema.png`](assets/database-schema.png), above, still shows the old November schema that legacy deploys, until it's replaced with an export of `schema.dbml`. The baseline adds `topics` and `club_tags`, the image columns, `club_members.role` in place of the two flags, the announcement tables, and the three views, and removes `archived`; see the table below.
 
 ### Tables and views
 
@@ -541,7 +547,8 @@ Product and data decisions the code doesn't settle:
 
 - `database/README.md`: this reference.
 - `database/docs/schema-review.md`: the schema decisions, the findings behind the baseline, and future migration work.
-- `database/assets/database-schema.png`: the legacy November schema diagram.
+- `database/docs/schema.dbml`: the dbdiagram.io source for the baseline schema. Updated with every schema change.
+- `database/assets/database-schema.png`: the legacy November schema diagram, until it's replaced with an export of `schema.dbml`.
 - `database/go.mod` and `go.sum`: the independent module (Go 1.23.0 directive, Go 1.24.3 toolchain).
 - `database/migrations/schema/`: the baseline up and down files.
 - `database/migrations/seed/`: the development seed.

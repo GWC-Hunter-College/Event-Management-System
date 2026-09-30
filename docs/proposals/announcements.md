@@ -186,7 +186,7 @@ Unchanged from [announcements.md](../../api/endpoints/announcements.md#status): 
 
 ## Rough AWS cost
 
-Negligible. The tab's reads are one API call per club page view plus "load more"; at 10,000 club page views a month that's about $0.01 of HTTP API, and Lambda inside the free tier. Images add the ~$0.003 a month of storage above, plus reads through signed URLs. Notifications are costed in [notifications.md](notifications.md#rough-aws-cost).
+Negligible. The tab's reads are one API call per club page view plus "load more"; at 10,000 club page views a month that's nothing extra on a server, or about $0.02 of API Gateway and Lambda serverless. Images add the ~$0.003 a month of storage above, plus reads through signed URLs. Notifications are costed in [notifications.md](notifications.md#rough-aws-cost).
 
 ## Changes to existing tables and endpoints
 

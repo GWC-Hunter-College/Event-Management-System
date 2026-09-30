@@ -97,13 +97,13 @@ Gaps these proposals found, beyond the proposals themselves. The board's three n
 | **Member photo uploads** | Board phase 3 | ⬜ Every upload route is for managers, and none checks auth, type, or size today ([images.md](../../api/endpoints/images.md)). | Board phase 3, after the upload routes are protected. |
 | **Albums** (a Photos tab) | Board phase 4 ("photos straight from their albums") | ⬜ Not designed. Event galleries are the only photo collections. | `GET /clubs/{clubId}/photos` over flyers and galleries stands in. |
 | Working event-gallery uploads | Board phase 1 | 🟨 The confirm fails on warm Lambdas and the list route is broken; the protected routes are Later. | Part of the core API's image work. |
-| Image renditions | Board phase 1; also galleries and announcement images | ⬜ Every read would serve the 2–4 MB original. | An S3-triggered resize Lambda writing a 640-pixel copy beside each upload ([board](bulletin-board.md#images-and-storage)). |
+| Image renditions | Board phase 1; also galleries and announcement images | ⬜ Every read would serve the 2–4 MB original. | A resize step writing a 640-pixel copy beside each upload ([board](bulletin-board.md#images-and-storage)). |
 | Student display names | The board's review queue, history, notifications | `student_info` exists; nothing writes it. | Emails for the e-board (decision 6), "A member" elsewhere, as the board design already does. |
-| A network path out of the VPC | Email (SES), async jobs | The legacy VPC has no NAT: Lambdas reach only Secrets Manager (interface endpoint) and S3 (gateway endpoint). | Jobs trigger through S3 events (free); email through one SES SMTP endpoint (~$7.30 a month). |
+| **Hosting** | Every feature, email, background jobs, every cost | Nothing is chosen, and `infrastructure/legacy` isn't being reused. | Three options in [infrastructure/aws/hosting-options.md](../../infrastructure/aws/hosting-options.md): one Lightsail server (~$9 a month), EC2 and RDS (~$26), or serverless with a sleeping Aurora (~$4 plus $0.06 per hour awake). |
 | SES production access and a sending domain | Email notifications | ⬜ | [Notifications phase 3](notifications.md#email-delivery-phase-3). |
 | Description length caps | Export round trip (Excel holds 32,767 characters per cell) | `TEXT` columns with no API limit. | 10,000 for events, 5,000 for clubs and announcement bodies. |
 | Consent between clubs | Announcement notifications to associate clubs; event co-hosts | Any e-board can list any club as an associate. | Notify only clubs the author manages ([announcements](announcements.md#notifications)). |
-| RDS backup retention | "Exports aren't backups" | One day in the legacy stack. | Raise it when the new infrastructure is written. |
+| Backups | "Exports aren't backups" | Nothing is running. | Snapshots and a nightly dump on a server, or managed backups on RDS and Aurora ([hosting options](../../infrastructure/aws/hosting-options.md)). |
 
 ## Changes to existing things, all proposals together
 
@@ -139,21 +139,19 @@ Every cost in these proposals uses the same numbers. There's no live system to m
 | Per active club, per semester | 15 events, 15 announcements, ~300 photos at ~2.5 MB |
 | Board views | ~3,000 a month |
 
-Prices are **us-east-1 list prices as the author knows them, not quoted from AWS**: nothing in this work called AWS. Check the [AWS Pricing Calculator](https://calculator.aws/) before budgeting.
+Prices are us-east-1 list prices **at full price, with no free tier**. The one allowance counted is Cognito's 10,000 monthly active users, which AWS doesn't tie to the 12-month free tier. They were checked against search results on 2026-09-30, but AWS's own pricing pages couldn't be opened from that session, so check the [AWS Pricing Calculator](https://calculator.aws/) before budgeting.
 
 | Service | Price used |
 | --- | --- |
 | API Gateway HTTP API | $1.00 per million requests |
-| Lambda | $0.20 per million requests + $0.0000166667 per GB-second; always-free tier of 1M requests and 400,000 GB-seconds a month |
+| Lambda | $0.20 per million requests + $0.0000166667 per GB-second |
 | S3 Standard | $0.023 per GB-month; PUT $0.005 and GET $0.0004 per 1,000 requests |
-| Data transfer out to the internet | First 100 GB a month free across the account, then $0.09 per GB |
+| Data transfer out to the internet | $0.09 per GB |
 | SES | $0.10 per 1,000 emails |
-| Interface VPC endpoint | $0.01 per AZ-hour (~$7.30 a month in one AZ) + $0.01 per GB |
-| NAT gateway (for comparison) | $0.045 per hour (~$32.85 a month) + $0.045 per GB |
-| RDS gp2 storage | $0.115 per GB-month; the instance itself is already paid for |
-| EventBridge Scheduler | 14 million invocations a month free |
+| Aurora Serverless v2 | $0.12 per capacity-unit hour, nothing while paused; $0.10 per GB-month of storage |
+| Hosting | Per option, in [hosting-options.md](../../infrastructure/aws/hosting-options.md) |
 
-**Totals:** everything in-app (notifications phase 1, announcements, the board with renditions, edit history) comes to **under $2 a month**. Email notifications add **about $9 a month**, most of it the SES endpoint. Exports cost **a few dollars a semester**, almost all download bandwidth.
+**Totals.** Hosting is the fixed part: about **$9 a month** on one Lightsail server, **$26** on EC2 with RDS, or about **$4 plus $0.06 per hour the database is awake** serverless ([hosting options](../../infrastructure/aws/hosting-options.md)). Every option also pays about **$6 a month** for image storage, image downloads (with the 640-pixel copies), and email once it ships. On a server, the features themselves add almost nothing on top: their rows are megabytes and their work runs in the same process. Exports add **a few dollars a semester**, almost all download bandwidth. So the whole platform on the recommended Lightsail server comes to **about $15 a month**.
 
 ## Decisions needed to start
 

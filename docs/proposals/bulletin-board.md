@@ -317,7 +317,7 @@ Moving or resizing an approved pin isn't in the design and isn't proposed: the t
 
 The invariant stays as written: a pending, approved, or removed pin keeps its file alive, and only the purge hands it over.
 
-**Renditions are needed.** A board shows 20–60 photos at once, each a few hundred pixels wide. Today every read would sign the original upload, a 2–4 MB phone photo, so one board view would move 50–150 MB. Proposed: an S3-triggered resize Lambda, outside the VPC because it only needs S3, writes a 640-pixel JPEG beside each upload (`{object_key}.w640.jpg`, about 60–120 KB). The API signs the rendition for board tiles, gallery tiles, and announcement cards, and the original for full view. No schema change: the rendition key is derived from `object_key`, and the purge deletes both objects. Galleries, the Home hero, and announcement images benefit too.
+**Renditions are needed.** A board shows 20–60 photos at once, each a few hundred pixels wide. Today every read would sign the original upload, a 2–4 MB phone photo, so one board view would move 50–150 MB. Proposed: a resize step writes a 640-pixel JPEG beside each upload (`{object_key}.w640.jpg`, about 60–120 KB). On a server the API does it when the upload is confirmed; serverless, a Lambda triggered by the upload does ([hosting options](../../infrastructure/aws/hosting-options.md)). The API signs the rendition for board tiles, gallery tiles, and announcement cards, and the original for full view. No schema change: the rendition key is derived from `object_key`, and the purge deletes both objects. Galleries, the Home hero, and announcement images benefit too.
 
 ## Rough AWS cost
 
@@ -326,14 +326,14 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions), with abou
 | Item | Monthly |
 | --- | --- |
 | Rows | Under 1 MB a year. $0. |
-| Board reads (API Gateway + Lambda) | 3,000 requests: under $0.01. |
+| Board reads | 3,000 requests: nothing extra on a server, under $0.01 serverless. |
 | S3 GETs for images | 120,000 × $0.0004 per 1,000: ~$0.05. |
-| Data transfer, **with renditions** (~100 KB each) | ~12 GB: inside the 100 GB monthly free allowance, else ~$1.10. |
-| Data transfer, **without renditions** (~2.5 MB each) | ~300 GB: ~$18, and slow pages on phones. |
-| Resize Lambda | ~5,000 new images × ~1 GB-s: inside the free tier, else ~$0.10. |
+| Data transfer, **with renditions** (~100 KB each) | ~12 GB at $0.09: ~$1.10. |
+| Data transfer, **without renditions** (~2.5 MB each) | ~300 GB at $0.09: ~$27, and slow pages on phones. |
+| Resizing | ~5,000 new images: nothing extra on a server, ~$0.10 of Lambda serverless. |
 | Rendition storage | +3–5% of image storage: cents. |
 | Phase 3 uploads | ~50 active boards × 30 photos × 2.5 MB = ~3.75 GB a semester: ~$0.09 a month more each semester. |
-| **Total** | **Under $1 a month with renditions** |
+| **Total** | **About $1.50 a month with renditions** |
 
 ## Dependencies
 
@@ -375,7 +375,7 @@ What the board relies on that doesn't exist yet:
 
 | Phase | Scope | Size |
 | --- | --- | --- |
-| **1. First version: the e-board's board** | `board_pins` and its view; the board read (🟢), the photo picker, e-board pins (photos from flyers and galleries, notes, tickets, approved at once), remove and restore; the image and purge query changes; renditions; the Board tab with the timeline and replay. No review, no member input, no notifications. | Medium: 1 table, 5 routes, ~10 queries, 1 resize Lambda. |
+| **1. First version: the e-board's board** | `board_pins` and its view; the board read (🟢), the photo picker, e-board pins (photos from flyers and galleries, notes, tickets, approved at once), remove and restore; the image and purge query changes; renditions; the Board tab with the timeline and replay. No review, no member input, no notifications. | Medium: 1 table, 5 routes, ~10 queries, the resize step. |
 | 2 | Member submissions of existing club photos and notes; the review drawer; approve, decline, `/mine`; the three `board.*` notifications. | Medium. Needs notifications phase 1. |
 | 3 | Member photo uploads with type and size checks. | Small once the upload flow is protected. |
 | 4 | Albums, when a Photos tab exists; the "Popular boards" row; hiding the timeline until a semester of pins; a nav item. | — |

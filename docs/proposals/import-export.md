@@ -85,25 +85,25 @@ The export reads through the same views and queries the API uses (`club_details`
 | Every club, data only | A few MB. |
 | Every club, with images | Tens of GB. Not offered: see below. |
 
-**Recommendation: every export is an async job that writes a `.zip` to S3 and returns a presigned download link.** A direct response is ruled out for anything with images: API Gateway HTTP APIs time out after 30 seconds, and a Lambda's synchronous response is capped at 6 MB. A data-only workbook would fit, but one code path for every export is simpler to authorize, audit, and test, and a data-only job finishes in a few seconds anyway.
+**Recommendation: every export is an async job that writes a `.zip` to S3 and returns a presigned download link.** A direct response is ruled out for anything with images: a download of several GB shouldn't tie up the API, and serverless can't do it at all (API Gateway times out after 30 seconds, and a Lambda's response is capped at 6 MB). A data-only workbook would fit, but one code path for every export is simpler to authorize, audit, and test, and a data-only job finishes in a few seconds anyway.
 
 ```text
-Browser ── POST /clubs/{clubId}/exports ──> API Lambda (in the VPC)
-                                              ├─ INSERT data_jobs (queued)
-                                              └─ PUT s3://…/jobs/{jobId}.json   (S3 gateway endpoint)
-S3 event ──> Data-jobs worker Lambda (in the VPC)
-              ├─ reads RDS through the same queries the API uses
-              ├─ streams club.xlsx and images/ into a zip
-              └─ multipart upload ──> s3://…/exports/{clubId}/{jobId}.zip
+Browser ── POST /clubs/{clubId}/exports ──> API
+                                              └─ INSERT data_jobs (queued)
+Data-jobs worker
+  ├─ claims the job (SELECT … FOR UPDATE SKIP LOCKED)
+  ├─ reads MySQL through the same queries the API uses
+  ├─ streams club.xlsx and images/ into a zip
+  └─ multipart upload ──> s3://…/exports/{clubId}/{jobId}.zip
 Browser ── GET /exports/{jobId} (polls every 2 s) ──> status, then a 15-minute download URL
 ```
 
-- **The trigger is an S3 event,** not a queue or a direct Lambda invoke. The legacy network, which the new modules are expected to keep, has no NAT gateway: Lambdas reach Secrets Manager through an interface endpoint and S3 through a free gateway endpoint, and nothing else. Invoking a Lambda or sending to SQS from inside the VPC would need another interface endpoint (about $7.30 a month). Writing a small request object to S3 costs nothing, and S3 invokes the worker directly. The upload of an import `.zip` is the same kind of event.
+- **What runs the worker depends on the [hosting option](../../infrastructure/aws/hosting-options.md).** On a server (options 1 and 2) it's a goroutine in the API process that claims queued rows: no queue service and no time limit. Serverless (option 3), the API also writes a small request object to `jobs/` in S3, and S3 starts a worker Lambda; an uploaded import `.zip` starts it the same way. Neither needs a NAT gateway or a VPC endpoint.
 - **Streaming.** The worker writes the zip straight into an S3 multipart upload: Go's `archive/zip` over an `io.Pipe` into the SDK's upload manager, with images copied from `GetObject` bodies as they're read. Nothing is held in memory or on `/tmp`. Images are stored uncompressed in the zip (JPEG and PNG don't compress further); the workbook is deflated. Go writes Zip64 on its own past 4 GB or 65,535 files.
-- **Limits.** A Lambda runs at most 15 minutes. At a conservative 50 MB/s from S3 in-region that's over 40 GB, so any one club fits. Memory: 1,024–2,048 MB. A job still `running` after 20 minutes is marked `failed` the next time anyone reads it.
+- **Limits.** Serverless, a Lambda runs at most 15 minutes; at a conservative 50 MB/s from S3 that's over 40 GB, so any one club fits. On a 1 GB server the worker must stream, never buffer. A job still `running` after 20 minutes is marked `failed` the next time anyone reads it.
 - **Download.** `GET /exports/{jobId}` signs a fresh 15-minute URL on every call, with `Content-Disposition: attachment` and a readable filename, so a pasted link dies quickly. Presigned URLs are never logged.
 - **Clean-up.** An S3 lifecycle rule deletes `exports/` objects after 7 days and `jobs/` objects after a day; the job row becomes `expired`.
-- **Admin, every club:** data only, one workbook with a `club` column on each sheet. Images for every club would be tens of GB in one file; an admin who needs them exports clubs one at a time. **Exports aren't backups:** RDS automated backups and S3 versioning are. The legacy stack keeps RDS backups for one day ([`database.go`](../../infrastructure/legacy/internal/stack/database.go)); seven is the usual minimum, and backup storage up to the database's size costs nothing extra.
+- **Admin, every club:** data only, one workbook with a `club` column on each sheet. Images for every club would be tens of GB in one file; an admin who needs them exports clubs one at a time. **Exports aren't backups:** server snapshots and a nightly dump, or RDS and Aurora automated backups, are ([hosting options](../../infrastructure/aws/hosting-options.md)), with S3 versioning for images.
 
 ## Import
 
@@ -119,7 +119,8 @@ Browser ── GET /exports/{jobId} (polls every 2 s) ──> status, then a 15-
 ```text
 1. POST /imports {mode}                  → importId and a presigned POST form (size-limited)
 2. Browser uploads the .zip straight to s3://…/imports/{importId}/upload.zip
-3. S3 event → worker: validate everything, then a dry run → report on the job row (validated or invalid)
+3. Worker: validate everything, then a dry run → report on the job row (validated or invalid).
+   Serverless, the upload's S3 event starts it; on a server, the next GET /imports/{importId} sees the file and queues it.
 4. GET /imports/{importId}               → the preview: counts, errors, warnings, sample rows
 5. POST /imports/{importId}/commit       → worker: re-check, store images, one transaction → the new club
 ```
@@ -207,7 +208,7 @@ All Proposed, all ⬜. Responses use `200`, as every create does today ([Respons
 | 🔴 | POST | `/imports/{importId}/commit` | Imports what the dry run validated. | The student who started it | 3 |
 | 🔴 | DELETE | `/imports/{importId}` | Discards an import and its upload. | The student who started it, or an admin | 3 |
 | 🟢 | GET | `/imports/template` | The blank template (a README sheet and empty sheets). Could equally be a static file on the frontend. | Public | 4 |
-| 🔵 | Lambda | Data-jobs worker | Runs exports, dry runs, and commits, from S3 events. | — | 1 |
+| 🔵 | worker | Data-jobs worker | Runs exports, dry runs, and commits: a goroutine on a server, or a Lambda started by S3 events serverless. | — | 1 |
 
 ### 🔴 POST `/clubs/{clubId}/exports`
 
@@ -289,17 +290,17 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions):
 
 | Item | Cost |
 | --- | --- |
-| A club export with 750 MB of images | Worker: 2 GB × ~60 s = 120 GB-s, ~$0.002. S3 requests: under $0.01. Storage for 7 days: ~$0.004. **Download: 0.75 GB × $0.09 = ~$0.07**, or nothing inside the 100 GB monthly free allowance. |
+| A club export with 750 MB of images | Worker: nothing extra on a server; serverless, 2 GB × ~60 s = 120 GB-s, ~$0.002. S3 requests: under $0.01. Storage for 7 days: ~$0.004. **Download: 0.75 GB × $0.09 = ~$0.07.** |
 | A data-only export | Well under $0.01. |
 | A 1 GB import | Upload is free (data in). Worker ~$0.01. Temporary storage: cents. New images: ~$0.02 a month. |
-| Standing cost | None: no queue, no endpoint, no NAT. Lifecycle rules and S3 event notifications are free. |
+| Standing cost | None: no queue, no endpoint, no NAT. Lifecycle rules (and, serverless, S3 event notifications) are free. |
 | **50 full exports a semester** | **Under $5 a semester**, almost all of it download bandwidth. |
 
 ## Changes to existing tables and endpoints
 
 - **Tables:** none altered. `data_jobs` is new.
 - **Validation:** event descriptions capped at 10,000 characters and club descriptions at 5,000, on `POST /clubs/{clubId}/events`, `PATCH /auth/events/{eventId}`, `POST /clubs`, and `PATCH /clubs/{clubId}`, so every value fits in a cell.
-- **Infrastructure (in the new modules, not `infrastructure/legacy`):** the worker Lambda; S3 event notifications on `jobs/` and `imports/`; lifecycle rules on `exports/`, `imports/` and `jobs/`; an S3 gateway endpoint on the new VPC (the legacy one is in its bastion stack); and, separately, RDS backup retention raised from one day.
+- **Infrastructure (in [`infrastructure/aws/`](../../infrastructure/aws/), not `infrastructure/legacy`):** lifecycle rules on `exports/`, `imports/` and `jobs/`; serverless only, the worker Lambda and S3 event notifications on `jobs/` and `imports/`. Backups depend on the [hosting option](../../infrastructure/aws/hosting-options.md).
 - **Reused:** the read views and queries for the sheets, `POST /clubs`'s creator-ownership insert, and the image insert.
 - **Other proposals:** `exported` and `imported` history actions; `export.ready` and `import.finished` notification types.
 
@@ -309,7 +310,7 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions):
 2. **Who may import in `create` mode:** admins only (proposed first), or anyone who can create a club?
 3. **Invitations:** build `club_invitations` so an imported roster can be invited, or leave joining to students?
 4. **Retention:** 7 days for export files and a 15-minute link: right?
-5. **Admin all-clubs with images:** needed, or are RDS and S3 backups enough?
+5. **Admin all-clubs with images:** needed, or are the database's backups and S3 versioning enough?
 6. **History in exports:** should an admin's export include the club's edit history?
 7. **Co-hosted items:** export them as rows marked `co-host` (proposed), or leave them out?
 
@@ -317,7 +318,7 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions):
 
 | Phase | Scope | Size |
 | --- | --- | --- |
-| **1. First version** | Club export, **data only**: `data_jobs`, the S3-triggered worker, lifecycle rules, the three export routes, the zip with `manifest.json` and `club.xlsx` (no `images/`), emails opt-in, and the description caps. | Medium: 1 table, 3 routes, 1 Lambda. |
+| **1. First version** | Club export, **data only**: `data_jobs`, the worker, lifecycle rules, the three export routes, the zip with `manifest.json` and `club.xlsx` (no `images/`), emails opt-in, and the description caps. | Medium: 1 table, 3 routes, 1 Lambda. |
 | 2 | Images in the export: the streaming zip. | Small. |
 | 3 | Import in `restore` mode, for admins: presigned POST upload, validation, dry run with rollback, preview, commit. | Medium to large: most of the validation work. |
 | 4 | `create` mode with the template, co-host matching, invitations if accepted, the admin all-clubs export, and board pins in the format. | Medium. |

@@ -20,9 +20,9 @@ Two features that are already designed can't be finished without a way to tell a
 
 | | In-app | Email |
 | --- | --- | --- |
-| What it needs | One table and four routes. MySQL and the API only. | Everything in-app needs, plus SES production access, a sending domain with DKIM, SPF and DMARC, a network path from the VPC to SES, unsubscribe handling, and bounce handling. |
+| What it needs | One table and four routes. MySQL and the API only. | Everything in-app needs, plus SES production access, a sending domain with DKIM, SPF and DMARC, unsubscribe handling, and bounce handling. |
 | Reaches | Students who open the site. | Students who don't, as long as the Cognito trigger stored their email. `students.email` is nullable, and the access token carries no email ([M5](../../api/coverage.md#m5-the-access-token-has-no-email-claim)). |
-| Standing cost | About nothing. | About $7.30 a month for an SES VPC endpoint (see [Cost](#rough-aws-cost)). |
+| Standing cost | About nothing. | About nothing beyond SES's $0.10 per 1,000 emails, on any of the [hosting options](../../infrastructure/aws/hosting-options.md). Only a private network with no NAT, like the legacy stack's, would need a ~$7.30-a-month SES endpoint. |
 | Risk | Low. | A spam complaint or bounce rate can suspend the SES account; emails to CUNY addresses may be filtered. |
 
 **Recommendation: in-app first, email second.** Ship in-app notifications as version 1, with every type. Add email in phase 3, per type and per student, behind preferences. No web push or SMS: there's no native app, and web push needs a service worker and per-browser subscriptions for little gain at this scale.
@@ -160,7 +160,7 @@ All Proposed, all ⬜. Every 🔴 route first runs [`RequireStudent`](../../api/
 | 🔴 | PUT | `/me/notification-settings` | Changes those settings. | Any signed-in student | 3 |
 | 🟢 | POST | `/notifications/unsubscribe` | One-click unsubscribe from an email link. | Anyone holding a valid signed token | 3 |
 | 🔵 | function | `Notify` | Inserts notifications inside the caller's transaction. | Called by handlers | 1 |
-| 🔵 | Lambda | Email sender | Sends pending emails through SES. | Scheduled | 3 |
+| 🔵 | worker | Email sender | Sends pending emails through SES. | — | 3 |
 
 **Authorization.** Every `/me` route is scoped to the caller: each query has `fk_recipient_id = <sub>` in its `WHERE` clause. Someone else's notification id is `404`, not `403`, so ids don't reveal anything. There's no public or admin route that creates a notification; only the 🔵 `Notify` function does, from inside a handler that already passed its own role check. An admin broadcast to every student is an [open question](#open-questions).
 
@@ -254,26 +254,21 @@ Each type runs one `INSERT … SELECT` that picks its recipients in SQL (for exa
 ## Email delivery (phase 3)
 
 ```text
-API handler (in the VPC)
+API handler
   └─ same transaction ─> notifications row, email_status = 'pending'
 
-EventBridge Scheduler, every minute
-  └─> Email sender Lambda (in the VPC)
-        ├─ SELECT … WHERE email_status = 'pending' ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED
-        ├─ render, send over SMTP ─> SES VPC endpoint (email-smtp) ─> the student's inbox
-        └─ UPDATE email_status = 'sent' or 'failed', emailed_at
+Email sender
+  ├─ SELECT … WHERE email_status = 'pending' ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED
+  ├─ render, send ─> SES ─> the student's inbox
+  └─ UPDATE email_status = 'sent' or 'failed', emailed_at
 ```
 
-**Why this shape.** The legacy network, which the new modules are expected to keep, puts every Lambda in private isolated subnets with **no NAT gateway**; the only way out is a Secrets Manager interface endpoint and an S3 gateway endpoint ([`network.go`](../../infrastructure/legacy/internal/stack/network.go), [`bastion.go`](../../infrastructure/legacy/internal/stack/bastion.go)). So a Lambda that can read RDS can't reach SES without help. The options:
+The table is the outbox: delivery state stays in the database, and a failed send stays `pending` for the next pass. **What runs the sender depends on the [hosting option](../../infrastructure/aws/hosting-options.md):**
 
-| Option | Monthly cost | Notes |
-| --- | --- | --- |
-| **SES SMTP interface endpoint, one AZ** (recommended) | ~$7.30 + $0.01/GB | The table is the outbox, so delivery state stays in the database and a failed send is retried on the next run. |
-| NAT gateway | ~$32.85 + $0.045/GB | Opens all outbound traffic; far more than email needs. |
-| SQS interface endpoint and a sender outside the VPC | ~$7.30 | Same cost, but the sender can't write delivery state back to RDS. |
-| Rendered message written to S3 (free gateway endpoint), S3 event to a sender outside the VPC | ~$0 | Cheapest, but delivery state lives outside the database and the email contents sit in S3. A fallback if $7 a month matters. |
+- **On a server** (options 1 and 2): a goroutine in the API process makes a pass every minute and calls SES directly. It's a loop inside the API, not a scheduled job, and it only sends what's already committed.
+- **Serverless with a sleeping database** (option 3): a timer would keep Aurora awake, so the handler makes one pass right after its transaction commits. A send that fails stays `pending` until the next write wakes the database.
 
-**A scheduled trigger.** Decision 8 ruled out a scheduled *purge*. A delivery poller is a different job: it only sends what's already committed and pending. It's still a schedule, so it's an [open question](#open-questions). The alternative trigger is an S3 "nudge" object written after commit, which invokes the sender through an S3 event with no schedule.
+Neither needs a NAT gateway or a VPC endpoint. Those were only needed because the legacy stack's Lambdas sat in private subnets with no way out.
 
 **SES setup.** Request production access (the sandbox only sends to verified addresses, 200 a day). Verify a domain with Easy DKIM, set a custom MAIL FROM for SPF, and publish DMARC. **Which domain** is open: `girlswhocodehunter.org` is live in Route 53 ([hosting/README.md](../../hosting/README.md)), so a subdomain of it could send today, but this platform serves every Hunter club. Leave SES's account-level suppression list on, so bounces and complaints stop further sends without code; a bounce handler (SNS to Lambda, marking the student) can come later.
 
@@ -289,12 +284,10 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions): 50 active
 
 | Item | Phase 1 (in-app) | Phase 3 (email) |
 | --- | --- | --- |
-| Rows | ~13,000 announcement notifications a month, plus board and job rows. ~400 bytes each with indexes: ~6 MB a month. Well inside the instance's 20 GB. | Same. |
-| Polling | 1,000 students × ~20 checks a day × 30 = ~600,000 requests: ~$0.60 of HTTP API, Lambda inside the free tier (~$0.15 without it). | Same. |
+| Rows | ~13,000 announcement notifications a month, plus board and job rows. ~400 bytes each with indexes: ~6 MB a month, a rounding error on any database's storage. | Same. |
+| Polling | 1,000 students × ~20 checks a day × 30 = ~600,000 requests. Nothing extra on a server; ~$0.75 of API Gateway and Lambda serverless, where the counts come from DynamoDB so Aurora can sleep. | Same. |
 | Email | — | ~13,000 emails at $0.10 per 1,000: ~$1.30. |
-| Network | — | SES SMTP endpoint in one AZ: ~$7.30. |
-| Scheduler | — | 43,200 invocations a month: inside the free tier. |
-| **Total** | **Under $1 a month** | **About $9 a month** |
+| **Total** | **Under $1 a month** | **About $2 a month** |
 
 ## Changes to existing tables and endpoints
 
@@ -309,7 +302,7 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions): 50 active
 
 1. **Email defaults.** Recommended: announcements on, export-ready on, board outcomes off. Is emailing every announcement by default acceptable, given that joining a club is the student's only consent?
 2. **Sending domain** for SES: a subdomain of `girlswhocodehunter.org`, a new domain for the Hunter clubs site, or a Hunter-owned one?
-3. **Scheduler.** Is a one-minute delivery poller acceptable, given that decision 8 chose "no scheduled job" for the purge? Or use the S3-nudge trigger?
+3. **The sender's loop.** On a server, the sender makes a pass every minute inside the API. Decision 8 ruled out a scheduled job for the purge; is a sending loop acceptable?
 4. **Retention:** 180 days for read notifications and a year for all?
 5. **Per-club mute** ("don't notify me about this club") in phase 1, or later? It would be a column on `club_members` or a small table.
 6. **Admin broadcasts** to every student (for example, "club fair on Thursday")? Nothing here supports that.
@@ -322,5 +315,5 @@ Using the [shared assumptions](README.md#scale-and-price-assumptions): 50 active
 | --- | --- | --- |
 | **1. First version** | The `notifications` table as sketched, `Notify`, the four `/me/notifications` routes, the bell and panel, and one type: `announcement.posted`, shipped with the [Announcements tab](announcements.md). In-app only. | Small: 1 table, 4 routes, ~5 queries. |
 | 2 | Board types with grouping (`group_key`), and job types, as those features ship. | Small, per feature. |
-| 3 | Email: SES setup and domain, the SMTP endpoint, the sender Lambda and schedule, preferences, the settings page, one-click unsubscribe, retention in the purge. | Medium: mostly infrastructure. |
+| 3 | Email: SES setup and domain, the sender, preferences, the settings page, one-click unsubscribe, retention in the purge. | Medium. |
 | Later | Event reminders (needs a "remind me" or RSVP record, and a schedule per event), digests, per-club mute, web push. | — |

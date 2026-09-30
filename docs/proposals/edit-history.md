@@ -110,7 +110,7 @@ CREATE TABLE `audit_log` (
 Notes:
 
 - **Names.** `old_values` and `new_values`, because `BEFORE` is a reserved word in MySQL.
-- **`club_ids` as JSON** with a multi-valued index (MySQL 8.0.17 and later; RDS runs 8.0.37): a club's feed is `WHERE ? MEMBER OF (club_ids) ORDER BY id DESC LIMIT ?`. Recording the clubs on the row, rather than joining `events_to_clubs` at read time, keeps a co-host's view of history after the event is purged or the co-host is removed. The alternative is an `audit_log_clubs` link table, in the style of `events_to_clubs`; it costs a second insert per change for the same result.
+- **`club_ids` as JSON** with a multi-valued index (MySQL 8.0.17 and later, which every [hosting option](../../infrastructure/aws/hosting-options.md) provides): a club's feed is `WHERE ? MEMBER OF (club_ids) ORDER BY id DESC LIMIT ?`. Recording the clubs on the row, rather than joining `events_to_clubs` at read time, keeps a co-host's view of history after the event is purged or the co-host is removed. The alternative is an `audit_log_clubs` link table, in the style of `events_to_clubs`; it costs a second insert per change for the same result.
 - **`actor_role`** is the actor's role at the time, so "an admin cancelled this" reads correctly after roles change. `fk_actor_id` is `SET NULL` ([F1](../../database/docs/schema-review.md#f1-on-delete-behavior) attribution).
 - **`entity_id` is `INT`**, which fits clubs, events, announcements, and board pins. Recording images (UUIDs) later would widen it to `VARCHAR(36)`.
 - **`entity_type` and `action` are ENUMs,** like the status columns: a new kind of entry comes with code anyway.

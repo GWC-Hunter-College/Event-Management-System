@@ -47,6 +47,8 @@ An unknown club returns `200` with `"events": []`.
 - An unknown club returns `404` `{"error": "Club with id <clubId> not found"}`.
 - Drafts stay out of this public list. The frontend reads them from [`GET /clubs/{clubId}/events/drafts`](#-get-clubsclubideventsdrafts) instead ([M1](../coverage.md#m1-drafts-in-public-lists)).
 
+**Queries** (2): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`clubs/events/list/SELECT_club_events.sql`](../../database/queries/clubs/events/list/SELECT_club_events.sql) (read)
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/events/get.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/events/get.go) · SQL [`clubs/SELECT_club_events.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/SELECT_club_events.sql) · [query group 10](../../database/README.md#10-club-event-list)
 
 ## 🔴 POST `/clubs/{clubId}/events`
@@ -142,6 +144,8 @@ Creates a draft event, links it to the club as owner and to any associate clubs,
 - **Errors:** `401` (API Gateway), `403` not a manager of the club, `404` unknown club, `400` validation with `"errors": [{"field", "message"}]`, `500` database failure.
 - **Writes:** event, owner link, associate links, and description in one transaction.
 
+**Queries** (5; steps 3–6 in one transaction): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`authorization/clubs/can_manage/IS_student_authorized_club.sql`](../../database/queries/authorization/clubs/can_manage/IS_student_authorized_club.sql) (auth, `403`) → 3. [`events/create/INSERT_event.sql`](../../database/queries/events/create/INSERT_event.sql) (write, its last insert id is the event id) → 4. [`events/create/INSERT_event_description.sql`](../../database/queries/events/create/INSERT_event_description.sql) (write, if there is a description) → 5. [`events/create/INSERT_event_club_link.sql`](../../database/queries/events/create/INSERT_event_club_link.sql) (write, the owner link, `TRUE`) → 6. [`events/create/INSERT_event_club_link.sql`](../../database/queries/events/create/INSERT_event_club_link.sql) (write, once per associate, `FALSE`, deduplicated). A bad associate id fails its foreign key and rolls everything back.
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/events/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/events/post/post.go) · SQL [`events/INSERT_event.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event.sql), [`events/INSERT_event_club_link.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_club_link.sql), and [`events/INSERT_event_description.sql`](../../infrastructure/legacy/utils/query_client/queries/events/INSERT_event_description.sql) · [query group 12](../../database/README.md#12-create-event-draft)
 
 ## 🔴 GET `/clubs/{clubId}/events/drafts`
@@ -166,10 +170,12 @@ Lists a club's drafted events for its e-board and owners (PDF: check the caller'
 
   Drafts may have no flyer (`thumbnailUrl` absent), which the step-1 panel shows as "no flyer yet".
 
-**Status:** ⬜ Not built. `SELECT_club_events.sql` is status-parameterized, but its only handler always passes `posted`.
+**Status:** ⬜ Not built. The legacy `SELECT_club_events.sql` is status-parameterized, but its only handler always passes `posted`. The module's drafts query fixes the status to `draft` in the SQL, so no caller can choose it ([query group 21](../../database/README.md#21-club-draft-events)).
 
 **Known issues:**
 
-- Don't let callers choose the status filter until the role check is in place.
+- The role check must run before the drafts query: drafts are for the club's e-board and owners only.
+
+**Queries** (3): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`authorization/clubs/can_manage/IS_student_authorized_club.sql`](../../database/queries/authorization/clubs/can_manage/IS_student_authorized_club.sql) (auth, `403`) → 3. [`clubs/events/drafts/SELECT_club_drafts.sql`](../../database/queries/clubs/events/drafts/SELECT_club_drafts.sql) (read)
 
 **Plan:** PDF "Endpoints Revamp", p. 17 · [query group 21](../../database/README.md#21-club-draft-events)

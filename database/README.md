@@ -258,7 +258,7 @@ Each fix is in the module's copy only; `infrastructure/legacy` is unchanged.
 
 ## Transactions
 
-Endpoints that run more than one statement. Each "in one transaction" workflow uses the client's transaction helpers, and runs its statements in this order.
+Endpoints that run more than one statement. Each "in one transaction" workflow uses the client's transaction helpers, and runs its statements in this order. Every endpoint's section in [`api/endpoints/`](../api/endpoints/) has a **Queries** line that links the same files in the same order, with the authorization checks, and covers the single-statement endpoints too; the [endpoint index](../api/README.md#endpoints) counts them.
 
 | Endpoint | Order | Boundary |
 | --- | --- | --- |
@@ -283,6 +283,13 @@ Endpoints that run more than one statement. Each "in one transaction" workflow u
 | `POST /admins/purge` | `IS_admin` (`403`). **Transaction 1:** `UPDATE_images_of_purgeable_events` → `DELETE_purgeable_events` → `DELETE_purgeable_announcements`. **Then, in batches until one comes back empty:** `SELECT_purgeable_images` → for each row: `DELETE_purged_image` (commit) → delete the S3 object | Transaction 1 is atomic. Each image is its own step, and its row goes before its object, so a failed S3 delete leaves only a harmless orphan object. Every purge query hard-codes the 30 days that `UPDATE_event_restore` uses. |
 
 Reads with a follow-up check, not a transaction: `GET /events/{eventId}` is `SELECT_event` (`public_only` `TRUE`, no row is `404`) then `SELECT_event_images`. `GET /auth/events/{eventId}` is the can-manage-event check, then the same two with `public_only` `FALSE`. The gallery routes run `SELECT_event_status` first (public routes need `posted` or `cancelled`).
+
+**Where a SQL header names more callers than this table.** A few file headers list endpoints that the orders above don't need, because an earlier statement already settles the answer. The endpoint docs follow this table. The headers are to be corrected the next time those files change (this pass changed docs only):
+
+- `announcements/read/SELECT_announcement_status.sql` names `PATCH` and `DELETE /auth/announcements/{announcementId}`. **No endpoint runs it.** `PATCH` already holds the row from `SELECT_announcement_for_update`, so 0 rows from `UPDATE_announcement_status_posted` can only be `400`; 0 rows from the soft delete is `404` either way. Whether to keep it is an [open question](#open-questions).
+- `events/read/SELECT_event_status.sql` names `PATCH` and `DELETE /auth/events/{eventId}` for the same 0-row check, which they don't need for the same reasons. The gallery reads and the event image signers do run it.
+- `authorization/clubs/is_owner/IS_club_owner.sql` names `DELETE /clubs/{clubId}/members/me`. The leave flow runs `IS_club_member.sql` instead; with the owner rows locked, a member whose delete affected 0 rows is the last owner.
+- `clubs/get/EXISTS_club.sql` names `DELETE /clubs/{clubId}/members/me` and `POST /clubs/{clubId}/thumbnails/confirm`. Their `404`s come from `IS_club_member.sql` and `SELECT_club_logo_for_update.sql`.
 
 ## How the queries were tested
 
@@ -333,7 +340,7 @@ Legacy access is implemented by [`query_client.go`](../infrastructure/legacy/uti
 - `Get`, `Select`, and `Exec` don't use context-aware database methods.
 - The unused `ChangeDatabase` helper concatenates `USE ` with a caller-supplied database name; the module doesn't include it.
 
-The module's [`client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. AWS secret retrieval and RDS endpoint resolution are outside this module. [`queries.Load`](queries/queries.go) embeds all 63 query files and reads their complete bytes.
+The module's [`client/`](client/) accepts caller-supplied `mysql.Config` and propagates request contexts through `Get`, `Select`, `Exec`, and transaction operations. `Open` creates a lazy pool without dialing; `Ping(ctx)` explicitly checks connectivity. AWS secret retrieval and RDS endpoint resolution are outside this module. [`queries.Load`](queries/queries.go) embeds all 83 query files and reads their complete bytes.
 
 Client configuration the baseline needs ([T1](docs/schema-review.md#t1-store-start-and-end-in-utc)): `ParseTime = true`, `Loc = UTC`, and `Params["time_zone"] = "'+00:00'"`. The go-sql-driver default `clientFoundRows = false` is assumed: affected-row counts are *changed* rows, which the 0-row checks above rely on.
 
@@ -384,7 +391,7 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 ### 8. Join caller to club
 
 **Status:** ✅ · **Endpoints:** 🔴 [`POST /clubs/{clubId}/members/me`](../api/endpoints/memberships.md#-post-clubsclubidmembersme).
-**Files:** `clubs/members/create/INSERT_club_member.sql` (legacy), `clubs/get/EXISTS_club.sql`.
+**Files:** `clubs/get/EXISTS_club.sql`, `clubs/members/create/INSERT_club_member.sql` (fixed: writes `role`).
 
 ### 9. Leave caller's club
 
@@ -410,12 +417,12 @@ Each group lists its endpoints (the access marker and status are the endpoint's,
 ### 13. Club authorization
 
 **Status:** ✅ · **Endpoints:** 🔵 club role check, used by every club write.
-**Files:** `authorization/clubs/can_manage/IS_student_authorized_club.sql` (legacy), `is_member/IS_club_member.sql`, `is_owner/IS_club_owner.sql`.
+**Files:** `authorization/clubs/can_manage/IS_student_authorized_club.sql` (fixed: reads `role`), `is_member/IS_club_member.sql`, `is_owner/IS_club_owner.sql`.
 
 ### 14. Event authorization
 
 **Status:** ✅ · **Endpoints:** 🔵 event role check, used by every `/auth/events` route and the event image routes.
-**Files:** `authorization/events/can_manage/IS_student_authorized_event.sql` (legacy). Whether an event's author or an admin gets rights of their own is an [open question](#open-questions).
+**Files:** `authorization/events/can_manage/IS_student_authorized_event.sql` (fixed: reads `role`), and `manages_owner_club/IS_student_owner_club_manager.sql` for restore. Whether an event's author or an admin gets rights of their own is an [open question](#open-questions).
 
 ### 15. Event-image metadata confirmation
 
@@ -542,6 +549,7 @@ Product and data decisions the code doesn't settle:
 - Whether an event's author or an admin gets management rights beyond the linked clubs' e-board and owners. (An admin can already restore an event and take down an image.)
 - What "their clubs" means in `GET /admins`.
 - Whether unused `student_info` and `event_tags` are requirements or unserved schema. Nothing proposes deleting them.
+- Whether to keep [`SELECT_announcement_status.sql`](queries/announcements/read/SELECT_announcement_status.sql), which no endpoint runs ([why](#transactions)), or remove it and its embed entry with the next SQL change.
 
 ## Files
 

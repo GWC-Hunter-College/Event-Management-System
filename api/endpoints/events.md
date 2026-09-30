@@ -181,6 +181,8 @@ No matches returns `200` with `"events": []`.
 - Take the [proposed list parameters](#proposed-list-parameters): `limit` defaults to 50 (maximum 100) and counts events; `when=upcoming` orders by start ascending, `when=past` descending.
 - Unchanged: access 🟢, no role, and the `{"message", "events"}` envelope. The frontend sends `when=upcoming`.
 
+**Queries** (1): 1. [`events/read/SELECT_events.sql`](../../database/queries/events/read/SELECT_events.sql) (read)
+
 **Code:** route [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go) · handler [`events/get.go`](../../infrastructure/legacy/lambda/api/events/get.go) · SQL [`events/SELECT_events.sql`](../../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) · [query group 11](../../database/README.md#11-public-and-composite-event-read)
 
 ## 🟢 GET `/events/{eventId}`
@@ -220,6 +222,8 @@ Returns one posted event with its description and linked clubs. The frontend's E
 
 **Covers two PDF subresources:** the planning PDF lists `GET /events/{eventId}/description` and `GET /events/{eventId}/clubs` as separate public routes. This response already includes `description` and `owners`, so the design folds both into this endpoint instead of giving them routes of their own. Hard-coded stubs for both paths exist only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go): [`description/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/description/get.go) (with stale SQL in [`description.sql`](../../infrastructure/legacy/stub/lambda/events/eventId/description/description.sql)) and [`clubs/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/clubs/get.go). If a client ever needs those paths, add a thin adapter over this read rather than a second copy of the query.
 
+**Queries** (2): 1. [`events/read/SELECT_event.sql`](../../database/queries/events/read/SELECT_event.sql) (read, `public_only` `TRUE`; no row is `404`) → 2. [`events/images/list/SELECT_event_images.sql`](../../database/queries/events/images/list/SELECT_event_images.sql) (read, `images`)
+
 **Code:** route [`event_routes.go`](../../infrastructure/legacy/gateway/routes/event_routes.go) · handler [`events/eventId/get.go`](../../infrastructure/legacy/lambda/api/events/eventId/get.go) · SQL [`events/SELECT_events.sql`](../../infrastructure/legacy/utils/query_client/queries/events/SELECT_events.sql) · [query group 11](../../database/README.md#11-public-and-composite-event-read)
 
 ## 🟢 GET `/events/{eventId}/images`
@@ -236,6 +240,8 @@ Public image gallery for a posted event. Per the PDF, it first checks that the e
 
 **Status:** ⬜ Not built. An inactive, hard-coded stub exists in [`stub/lambda/events/eventId/images/get.go`](../../infrastructure/legacy/stub/lambda/events/eventId/images/get.go); don't treat its response as a contract. The deployed [`GET /clubs/{clubId}/events/{eventId}/images`](images.md#-get-clubsclubideventseventidimages) is broken (missing SQL) and checks neither posted status nor roles.
 
-**Needs:** the event-image list query, which is the missing `images`/`event_images` join ([query group 16](../../database/README.md#16-event-image-list)), plus a posted-visibility check and a storage adapter.
+**Needs:** a storage adapter to sign the URLs. The gallery query and the visibility check exist ([query group 16](../../database/README.md#16-event-image-list)).
+
+**Queries** (2): 1. [`events/read/SELECT_event_status.sql`](../../database/queries/events/read/SELECT_event_status.sql) (read, `404` unless `posted` or `cancelled`) → 2. [`events/images/list/SELECT_event_images.sql`](../../database/queries/events/images/list/SELECT_event_images.sql) (read)
 
 **Plan:** PDF "Endpoints Revamp", p. 17.

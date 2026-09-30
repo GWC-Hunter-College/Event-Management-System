@@ -18,9 +18,11 @@ Marks a club verified by inserting it into `verified_clubs` (PDF).
 
 **Response:** not defined.
 
-**Status:** ⬜ Not built. The schema and the read filter exist; there's no route, handler, insert query, or admin check.
+**Status:** ⬜ Not built. No route or handler. The schema, the read filter, and the SQL for the insert and the admin check exist ([query group 23](../../database/README.md#23-club-verification-writes)).
 
-**Notes:** `verified_clubs.fk_club_id` is unique, so verifying twice is only harmless once duplicate handling is defined.
+**Notes:** verifying a verified club changes nothing: `INSERT_verified_club.sql` affects 0 rows, and `EXISTS_club.sql` tells that apart from an unknown club.
+
+**Queries** (3): 1. [`authorization/admins/is_admin/IS_admin.sql`](../../database/queries/authorization/admins/is_admin/IS_admin.sql) (auth, `403`, if verifying is admin-only ([open question](../README.md#open-questions))) → 2. [`clubs/verification/create/INSERT_verified_club.sql`](../../database/queries/clubs/verification/create/INSERT_verified_club.sql) (write) → on 0 rows: 3. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, 0 is `404`; 1 means already verified). No transaction needed.
 
 **Plan:** PDF "Endpoints Revamp", p. 19 · [query group 23](../../database/README.md#23-club-verification-writes)
 
@@ -34,8 +36,10 @@ Removes a club from `verified_clubs` (PDF).
 
 **Response:** not defined.
 
-**Status:** ⬜ Not built. No route, handler, delete query, or admin check.
+**Status:** ⬜ Not built. No route or handler; the delete and the admin check exist as SQL ([query group 23](../../database/README.md#23-club-verification-writes)).
 
 **Notes:** unverifying only changes directory filtering. It doesn't revoke memberships or roles.
+
+**Queries** (3): 1. [`authorization/admins/is_admin/IS_admin.sql`](../../database/queries/authorization/admins/is_admin/IS_admin.sql) (auth, `403`, if unverifying is admin-only) → 2. [`clubs/verification/delete/DELETE_verified_club.sql`](../../database/queries/clubs/verification/delete/DELETE_verified_club.sql) (write) → on 0 rows: 3. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, 0 is `404`; 1 means the club wasn't verified). No transaction needed.
 
 **Plan:** PDF "Endpoints Revamp", p. 19 · [query group 23](../../database/README.md#23-club-verification-writes)

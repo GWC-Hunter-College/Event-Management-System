@@ -42,6 +42,8 @@ Joins the caller to a club as a regular member. The frontend's Club page calls i
 
 **PDF path:** the planning PDF writes this route as `POST /clubs/{clubId}/members` ("join a club as a member"). By design it's self-join only; no endpoint adds a different student ([query group 19](../../database/README.md#19-add-a-specified-club-member)).
 
+**Queries** (2): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`clubs/members/create/INSERT_club_member.sql`](../../database/queries/clubs/members/create/INSERT_club_member.sql) (write, 0 rows is `409`). No transaction: the insert is guarded on its own.
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) · handler [`clubs/clubId/members/me/post/post.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/post/post.go) · SQL [`clubs/INSERT_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/INSERT_club_member.sql) · [query group 8](../../database/README.md#8-join-caller-to-club)
 
 ## 🟢 DELETE `/clubs/{clubId}/members/me`
@@ -86,6 +88,8 @@ Leaves a club as the caller; an owner can't leave. The frontend's Club page call
 - **Errors:** `401` no token (API Gateway), `403` the caller is the club's last owner, `404` the caller isn't a member or the club doesn't exist, `500` ([M3](../coverage.md#m3-400-where-the-frontend-expects-401-403-or-404)).
 - **Owners:** an owner can leave while the club has another owner; the last owner can't ([decision 11](../README.md#decisions)). The deployed SQL refuses every owner.
 
+**Queries** (3; all in one transaction): 1. [`clubs/members/update_role/SELECT_club_owners_for_update.sql`](../../database/queries/clubs/members/update_role/SELECT_club_owners_for_update.sql) (read, locks the owner rows) → 2. [`clubs/members/leave/DELETE_club_member.sql`](../../database/queries/clubs/members/leave/DELETE_club_member.sql) (write) → on 0 rows: 3. [`authorization/clubs/is_member/IS_club_member.sql`](../../database/queries/authorization/clubs/is_member/IS_club_member.sql) (read, 0 is `404`; 1 is `403`, the caller is the last owner)
+
 **Code:** route [`club_routes.go`](../../infrastructure/legacy/gateway/routes/club_routes.go) (no `Authorizer` on this registration) · handler [`clubs/clubId/members/me/delete/delete.go`](../../infrastructure/legacy/lambda/api/clubs/clubId/members/me/delete/delete.go) · SQL [`clubs/DELETE_club_member.sql`](../../infrastructure/legacy/utils/query_client/queries/clubs/DELETE_club_member.sql) · [query group 9](../../database/README.md#9-leave-callers-club)
 
 ## 🔴 GET `/clubs/{clubId}/members`
@@ -116,7 +120,9 @@ Lists a club's members from `club_members`, paginated if needed (PDF). No fronte
   `role` is the member's one role (`club_members.role` in the baseline schema, [decision 11](../README.md#decisions)). With `role=eboard`, the list has e-board members and owners. Names come from `student_info`, which nothing writes yet, so they're usually `null`. Owners and e-board members see `email`; a regular member never does ([decision 6](../README.md#decisions)). Since this route is limited to e-board and owners, its callers always see emails. If the list is ever opened to members, `email` is left out for them.
 - **Errors:** `401`, `403` not e-board or owner, `404` unknown club.
 
-**Status:** ⬜ Not built. There's only placeholder text in [`stub/lambda/clubs/clubId/members/`](../../infrastructure/legacy/stub/lambda/clubs/clubId/members/).
+**Status:** ⬜ Not built. No route or handler; there's only placeholder text in [`stub/lambda/clubs/clubId/members/`](../../infrastructure/legacy/stub/lambda/clubs/clubId/members/). The SQL exists ([query group 18](../../database/README.md#18-club-member-and-e-board-listing)).
+
+**Queries** (3): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`authorization/clubs/can_manage/IS_student_authorized_club.sql`](../../database/queries/authorization/clubs/can_manage/IS_student_authorized_club.sql) (auth, `403`) → 3. [`clubs/members/list/SELECT_club_members.sql`](../../database/queries/clubs/members/list/SELECT_club_members.sql) (read, `role` filter from the query string, or `NULL`)
 
 **Plan:** PDF "Endpoints Revamp", p. 16 · [query group 18](../../database/README.md#18-club-member-and-e-board-listing)
 
@@ -132,7 +138,9 @@ Lists a club's e-board members and owners (PDF). The PDF itself asks whether thi
 
 **Proposed** (Need: **Later**; no screen lists the e-board yet): serve this as [`GET /clubs/{clubId}/members?role=eboard`](#-get-clubsclubidmembers), returning e-board members and owners, rather than a separate route. If the route is kept for the PDF's sake, it returns the same `members` shape.
 
-**Status:** ⬜ Not built. No route, handler, or query; only placeholder material.
+**Status:** ⬜ Not built. No route or handler; only placeholder material. It reuses the member-list SQL ([query group 18](../../database/README.md#18-club-member-and-e-board-listing)).
+
+**Queries** (3): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`authorization/clubs/can_manage/IS_student_authorized_club.sql`](../../database/queries/authorization/clubs/can_manage/IS_student_authorized_club.sql) (auth, `403`) → 3. [`clubs/members/list/SELECT_club_members.sql`](../../database/queries/clubs/members/list/SELECT_club_members.sql) (read, `role` `eboard`: e-board members and owners)
 
 **Plan:** PDF "Endpoints Revamp", p. 16 · [query group 18](../../database/README.md#18-club-member-and-e-board-listing)
 
@@ -152,6 +160,8 @@ Promotes a member to e-board or owner, or demotes them (PDF: `?is_eboard=<TRUE|F
 
 **Response:** not defined.
 
-**Status:** ⬜ Not built. No route, handler, owner-only check, or `UPDATE club_members` query.
+**Status:** ⬜ Not built. No route or handler. The owner-only check and the role update exist as SQL ([query group 20](../../database/README.md#20-update-member-roles)).
+
+**Queries** (5; steps 3–5 in one transaction): 1. [`clubs/get/EXISTS_club.sql`](../../database/queries/clubs/get/EXISTS_club.sql) (read, `404`) → 2. [`authorization/clubs/is_owner/IS_club_owner.sql`](../../database/queries/authorization/clubs/is_owner/IS_club_owner.sql) (auth, the caller; `403`) → 3. [`clubs/members/update_role/SELECT_club_owners_for_update.sql`](../../database/queries/clubs/members/update_role/SELECT_club_owners_for_update.sql) (read, locks the owner rows) → 4. [`clubs/members/update_role/UPDATE_club_member_role.sql`](../../database/queries/clubs/members/update_role/UPDATE_club_member_role.sql) (write) → on 0 rows: 5. [`authorization/clubs/is_member/IS_club_member.sql`](../../database/queries/authorization/clubs/is_member/IS_club_member.sql) (read, the target: 0 is `404`; otherwise the locked owner rows tell "already in that role" (`200`) from "last owner" (`409`))
 
 **Plan:** PDF "Endpoints Revamp", p. 16 · [query group 20](../../database/README.md#20-update-member-roles)

@@ -91,77 +91,79 @@ The table above is the deployed (legacy) schema. In the [baseline schema](../dat
 
 Every route registered in [`gateway/routes`](../infrastructure/legacy/gateway/routes/), every internal function, every endpoint the planning PDF's "Endpoints Revamp" and image-upload flow call for, and one endpoint proposed from the [frontend coverage](coverage.md) check (`PATCH /clubs/{clubId}`). Which screen uses each endpoint is in [coverage.md](coverage.md#screens).
 
-| Access | Method | Path | What it does | Status | Frontend need | Docs |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Me** | | | | | | |
-| 🔴 | GET | `/me` | Returns the caller's student record. | ✅ | Later | [me.md](endpoints/me.md#-get-me) |
-| 🔴 | GET | `/me/clubs` | Lists the caller's clubs with their role in each. | ✅ | Now | [me.md](endpoints/me.md#-get-meclubs) |
-| 🔴 | GET | `/me/events` | Lists posted events from the caller's clubs. | ✅ | Now | [me.md](endpoints/me.md#-get-meevents) |
-| 🔴 | GET | `/me/clubs/eboard` | Lists clubs where the caller is e-board or owner. | ⬜ | — | [me.md](endpoints/me.md#-get-meclubseboard) |
-| **Clubs** | | | | | | |
-| 🟢 | GET | `/clubs` | Lists clubs; `?verified=true` returns only verified ones. | ✅ | Now | [clubs.md](endpoints/clubs.md#-get-clubs) |
-| 🔴 | POST | `/clubs` | Creates a club (with no owner). | ✅ | Now | [clubs.md](endpoints/clubs.md#-post-clubs) |
-| 🟢 | GET | `/clubs/{clubId}` | Returns one club, including unverified ones. | ✅ | Now | [clubs.md](endpoints/clubs.md#-get-clubsclubid) |
-| 🔴 | PATCH | `/clubs/{clubId}` | Updates a club's info (owners and e-board). Proposed; not in the PDF. | ⬜ | Later | [clubs.md](endpoints/clubs.md#-patch-clubsclubid) |
-| **Memberships** | | | | | | |
-| 🔴 | POST | `/clubs/{clubId}/members/me` | Joins the caller to a club. | ✅ | Now | [memberships.md](endpoints/memberships.md#-post-clubsclubidmembersme) |
-| 🟢 | DELETE | `/clubs/{clubId}/members/me` | Leaves a club. Broken: the route has no authorizer. | 🟨 | Now | [memberships.md](endpoints/memberships.md#-delete-clubsclubidmembersme) |
-| 🔴 | GET | `/clubs/{clubId}/members` | Lists a club's members, for its e-board and owners. | ⬜ | Later | [memberships.md](endpoints/memberships.md#-get-clubsclubidmembers) |
-| 🔴 | GET | `/clubs/{clubId}/eboard` | Lists a club's e-board and owners. | ⬜ | Later | [memberships.md](endpoints/memberships.md#-get-clubsclubideboard) |
-| 🔴 | PUT | `/clubs/{clubId}/members/roles` | Promotes or demotes a member (owners only). | ⬜ | Later | [memberships.md](endpoints/memberships.md#-put-clubsclubidmembersroles) |
-| **Club events** | | | | | | |
-| 🟢 | GET | `/clubs/{clubId}/events` | Lists a club's posted events. | ✅ | Now | [club-events.md](endpoints/club-events.md#-get-clubsclubidevents) |
-| 🔴 | POST | `/clubs/{clubId}/events` | Creates a draft event. Broken: invalid SQL. | 🟨 | Now | [club-events.md](endpoints/club-events.md#-post-clubsclubidevents) |
-| 🔴 | GET | `/clubs/{clubId}/events/drafts` | Lists a club's draft events, for its e-board and owners. | ⬜ | Now | [club-events.md](endpoints/club-events.md#-get-clubsclubideventsdrafts) |
-| **Events** | | | | | | |
-| 🟢 | GET | `/events` | Lists posted events in a date window. | ✅ | Now | [events.md](endpoints/events.md#-get-events) |
-| 🟢 | GET | `/events/{eventId}` | Returns one posted event with its description and clubs. | ✅ | Now | [events.md](endpoints/events.md#-get-eventseventid) |
-| 🟢 | GET | `/events/{eventId}/images` | Public gallery for a posted event. | ⬜ | Later | [events.md](endpoints/events.md#-get-eventseventidimages) |
-| **Event management (`/auth/events`)** | | | | | | |
-| 🔴 | GET | `/auth/events/{eventId}` | Returns an event in any status, for its managers. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-get-autheventseventid) |
-| 🔴 | GET | `/auth/events/{eventId}/images` | Returns an event's images, drafts included, for its managers. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-get-autheventseventidimages) |
-| 🔴 | PATCH | `/auth/events/{eventId}` | Updates an event in place: saves or posts a resumed draft (needed now, M12), cancels, or edits. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-patch-autheventseventid) |
-| 🔴 | POST | `/auth/events/{eventId}/thumbnails` | Presigned upload for an event thumbnail. | ⬜ | Now | [event-management.md](endpoints/event-management.md#-post-autheventseventidthumbnails) |
-| 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
-| 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
-| 🔴 | POST | `/auth/events/{eventId}/restore` | Restores an event deleted less than 30 days ago (owning club's e-board or owners, or an admin). Proposed; not in the PDF. | ⬜ | Later | [event-management.md](endpoints/event-management.md#-post-autheventseventidrestore) |
-| **Announcements** (Proposed; not in the PDF) | | | | | | |
-| 🟢 | GET | `/clubs/{clubId}/announcements` | Lists a club's posted announcements, most recently posted first. The GWC website reads it too. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncements) |
-| 🟢 | GET | `/announcements/{announcementId}` | Returns one posted announcement. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-announcementsannouncementid) |
-| 🔴 | GET | `/clubs/{clubId}/announcements/drafts` | Lists a club's draft announcements, for its e-board and owners. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) |
-| 🔴 | GET | `/auth/announcements/{announcementId}` | Returns an announcement in either status, for its managers. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-get-authannouncementsannouncementid) |
-| 🔴 | POST | `/clubs/{clubId}/announcements` | Creates an announcement, optionally shared with other clubs. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-post-clubsclubidannouncements) |
-| 🔴 | PATCH | `/auth/announcements/{announcementId}` | Edits an announcement, or posts a draft (`draft → posted` only). | ⬜ | Later | [announcements.md](endpoints/announcements.md#-patch-authannouncementsannouncementid) |
-| 🔴 | DELETE | `/auth/announcements/{announcementId}` | Deletes an announcement (soft delete). | ⬜ | Later | [announcements.md](endpoints/announcements.md#-delete-authannouncementsannouncementid) |
-| 🔴 | POST | `/auth/announcements/{announcementId}/restore` | Restores an announcement deleted less than 30 days ago. | ⬜ | Later | [announcements.md](endpoints/announcements.md#-post-authannouncementsannouncementidrestore) |
-| **Images** | | | | | | |
-| 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
-| 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | Now | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
-| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails` | Presigned S3 upload URL for an event thumbnail. | ✅ | Now | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnails) |
-| 🔴 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails/confirm` | Attaches an uploaded thumbnail to its event. | ⬜ | Now | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm) |
-| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/images` | Presigned S3 upload URL for an event gallery image. | ✅ | Later | [images.md](endpoints/images.md#-post-clubsclubideventseventidimages) |
-| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/images/confirm` | Records an uploaded gallery image. Fails on warm invocations. | 🟨 | Later | [images.md](endpoints/images.md#-post-clubsclubideventseventidimagesconfirm) |
-| 🟢 | GET | `/clubs/{clubId}/events/{eventId}/images` | Lists gallery images with signed URLs. Broken: missing SQL file. | 🟨 | Later | [images.md](endpoints/images.md#-get-clubsclubideventseventidimages) |
-| 🔴 | DELETE | `/images/{imageId}` | Deletes an image. | ⬜ | Later | [images.md](endpoints/images.md#-delete-imagesimageid) |
-| **Admins** | | | | | | |
-| 🔴 | GET | `/admins` | Lists admins. | ⬜ | Later | [admins.md](endpoints/admins.md#-get-admins) |
-| 🔴 | GET | `/admins/{studentId}` | Returns one admin. | ⬜ | Later | [admins.md](endpoints/admins.md#-get-adminsstudentid) |
-| 🔴 | POST | `/admins` | Promotes a student to admin. | ⬜ | Later | [admins.md](endpoints/admins.md#-post-admins) |
-| 🔴 | DELETE | `/admins/{studentId}` | Demotes an admin; never the last one. | ⬜ | Later | [admins.md](endpoints/admins.md#-delete-adminsstudentid) |
-| 🔴 | POST | `/admins/purge` | Permanently removes events and images deleted more than 30 days ago (admins only). Proposed; not in the PDF. | ⬜ | Later | [admins.md](endpoints/admins.md#-post-adminspurge) |
-| **Verification** | | | | | | |
-| 🔴 | POST | `/clubs/{clubId}/verification` | Marks a club verified. | ⬜ | Later | [verification.md](endpoints/verification.md#-post-clubsclubidverification) |
-| 🔴 | DELETE | `/clubs/{clubId}/verification` | Removes a club's verification. | ⬜ | Later | [verification.md](endpoints/verification.md#-delete-clubsclubidverification) |
-| **Internal** | | | | | | |
-| 🔵 | trigger | Cognito sign-up and sign-in | Upserts the student row from `sub` and `email`. | ✅ | — | [internal.md](endpoints/internal.md#-cognito-student-sync-trigger) |
-| 🔵 | function | `RequireStudent` | Creates the caller's student row on first request if it's missing. | ✅ | — | [internal.md](endpoints/internal.md#-requirestudent-request-time-student-sync) |
-| 🔵 | function | Club role check | Is the caller e-board or owner of a club? No handler calls it yet. | 🟨 | Now | [internal.md](endpoints/internal.md#-club-role-check) |
-| 🔵 | function | Event role check | Is the caller e-board or owner of a club linked to an event? No handler calls it yet. | 🟨 | Now | [internal.md](endpoints/internal.md#-event-role-check) |
-| 🔵 | function | Admin check | Is the caller an admin? | ⬜ | Later | [internal.md](endpoints/internal.md#-admin-check) |
-| 🔵 | function | Image metadata write | Stores image metadata after an upload. | ⬜ | Now | [internal.md](endpoints/internal.md#-image-metadata-write-pdf-post-images) |
-| **Operational** | | | | | | |
-| 🟢 | GET | `/health` | Liveness check; returns a fixed greeting. | ✅ | — | [operational.md](endpoints/operational.md#-get-health) |
-| 🟢 | GET | `/database/test` | Database connectivity check. Dormant: neither API registers it. | 🟨 | — | [operational.md](endpoints/operational.md#-get-databasetest) |
+**Queries** is the number of SQL files from the [database module](../database/README.md) the endpoint runs. Each endpoint's section has a **Queries** line that links them in order, each labelled `auth` (an authorization check), `read`, or `write`, with its transaction boundary. The order and boundaries come from [Transactions](../database/README.md#transactions). For a built (✅ or 🟨) endpoint, these are the module's queries that replace the legacy SQL its **Code** line links. Every 🔴 route first runs [`RequireStudent`](endpoints/internal.md#-requirestudent-request-time-student-sync), whose queries are counted only on its own row. `0` means the endpoint runs no query, and its section says why.
+
+| Access | Method | Path | What it does | Status | Frontend need | Queries | Docs |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| **Me** | | | | | | | |
+| 🔴 | GET | `/me` | Returns the caller's student record. | ✅ | Later | 2 | [me.md](endpoints/me.md#-get-me) |
+| 🔴 | GET | `/me/clubs` | Lists the caller's clubs with their role in each. | ✅ | Now | 1 | [me.md](endpoints/me.md#-get-meclubs) |
+| 🔴 | GET | `/me/events` | Lists posted events from the caller's clubs. | ✅ | Now | 1 | [me.md](endpoints/me.md#-get-meevents) |
+| 🔴 | GET | `/me/clubs/eboard` | Lists clubs where the caller is e-board or owner. | ⬜ | — | 1 | [me.md](endpoints/me.md#-get-meclubseboard) |
+| **Clubs** | | | | | | | |
+| 🟢 | GET | `/clubs` | Lists clubs; `?verified=true` returns only verified ones. | ✅ | Now | 1 | [clubs.md](endpoints/clubs.md#-get-clubs) |
+| 🔴 | POST | `/clubs` | Creates a club (with no owner). | ✅ | Now | 4 | [clubs.md](endpoints/clubs.md#-post-clubs) |
+| 🟢 | GET | `/clubs/{clubId}` | Returns one club, including unverified ones. | ✅ | Now | 1 | [clubs.md](endpoints/clubs.md#-get-clubsclubid) |
+| 🔴 | PATCH | `/clubs/{clubId}` | Updates a club's info (owners and e-board). Proposed; not in the PDF. | ⬜ | Later | 7 | [clubs.md](endpoints/clubs.md#-patch-clubsclubid) |
+| **Memberships** | | | | | | | |
+| 🔴 | POST | `/clubs/{clubId}/members/me` | Joins the caller to a club. | ✅ | Now | 2 | [memberships.md](endpoints/memberships.md#-post-clubsclubidmembersme) |
+| 🟢 | DELETE | `/clubs/{clubId}/members/me` | Leaves a club. Broken: the route has no authorizer. | 🟨 | Now | 3 | [memberships.md](endpoints/memberships.md#-delete-clubsclubidmembersme) |
+| 🔴 | GET | `/clubs/{clubId}/members` | Lists a club's members, for its e-board and owners. | ⬜ | Later | 3 | [memberships.md](endpoints/memberships.md#-get-clubsclubidmembers) |
+| 🔴 | GET | `/clubs/{clubId}/eboard` | Lists a club's e-board and owners. | ⬜ | Later | 3 | [memberships.md](endpoints/memberships.md#-get-clubsclubideboard) |
+| 🔴 | PUT | `/clubs/{clubId}/members/roles` | Promotes or demotes a member (owners only). | ⬜ | Later | 5 | [memberships.md](endpoints/memberships.md#-put-clubsclubidmembersroles) |
+| **Club events** | | | | | | | |
+| 🟢 | GET | `/clubs/{clubId}/events` | Lists a club's posted events. | ✅ | Now | 2 | [club-events.md](endpoints/club-events.md#-get-clubsclubidevents) |
+| 🔴 | POST | `/clubs/{clubId}/events` | Creates a draft event. Broken: invalid SQL. | 🟨 | Now | 5 | [club-events.md](endpoints/club-events.md#-post-clubsclubidevents) |
+| 🔴 | GET | `/clubs/{clubId}/events/drafts` | Lists a club's draft events, for its e-board and owners. | ⬜ | Now | 3 | [club-events.md](endpoints/club-events.md#-get-clubsclubideventsdrafts) |
+| **Events** | | | | | | | |
+| 🟢 | GET | `/events` | Lists posted events in a date window. | ✅ | Now | 1 | [events.md](endpoints/events.md#-get-events) |
+| 🟢 | GET | `/events/{eventId}` | Returns one posted event with its description and clubs. | ✅ | Now | 2 | [events.md](endpoints/events.md#-get-eventseventid) |
+| 🟢 | GET | `/events/{eventId}/images` | Public gallery for a posted event. | ⬜ | Later | 2 | [events.md](endpoints/events.md#-get-eventseventidimages) |
+| **Event management (`/auth/events`)** | | | | | | | |
+| 🔴 | GET | `/auth/events/{eventId}` | Returns an event in any status, for its managers. | ⬜ | Now | 3 | [event-management.md](endpoints/event-management.md#-get-autheventseventid) |
+| 🔴 | GET | `/auth/events/{eventId}/images` | Returns an event's images, drafts included, for its managers. | ⬜ | Later | 3 | [event-management.md](endpoints/event-management.md#-get-autheventseventidimages) |
+| 🔴 | PATCH | `/auth/events/{eventId}` | Updates an event in place: saves or posts a resumed draft (needed now, M12), cancels, or edits. | ⬜ | Now | 10 | [event-management.md](endpoints/event-management.md#-patch-autheventseventid) |
+| 🔴 | POST | `/auth/events/{eventId}/thumbnails` | Presigned upload for an event thumbnail. | ⬜ | Now | 2 | [event-management.md](endpoints/event-management.md#-post-autheventseventidthumbnails) |
+| 🔴 | POST | `/auth/events/{eventId}/images` | Presigned upload for an event gallery image. | ⬜ | Later | 2 | [event-management.md](endpoints/event-management.md#-post-autheventseventidimages) |
+| 🔴 | DELETE | `/auth/events/{eventId}` | Deletes an event (soft delete). | ⬜ | Later | 2 | [event-management.md](endpoints/event-management.md#-delete-autheventseventid) |
+| 🔴 | POST | `/auth/events/{eventId}/restore` | Restores an event deleted less than 30 days ago (owning club's e-board or owners, or an admin). Proposed; not in the PDF. | ⬜ | Later | 6 | [event-management.md](endpoints/event-management.md#-post-autheventseventidrestore) |
+| **Announcements** (Proposed; not in the PDF) | | | | | | | |
+| 🟢 | GET | `/clubs/{clubId}/announcements` | Lists a club's posted announcements, most recently posted first. The GWC website reads it too. | ⬜ | Later | 2 | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncements) |
+| 🟢 | GET | `/announcements/{announcementId}` | Returns one posted announcement. | ⬜ | Later | 1 | [announcements.md](endpoints/announcements.md#-get-announcementsannouncementid) |
+| 🔴 | GET | `/clubs/{clubId}/announcements/drafts` | Lists a club's draft announcements, for its e-board and owners. | ⬜ | Later | 3 | [announcements.md](endpoints/announcements.md#-get-clubsclubidannouncementsdrafts) |
+| 🔴 | GET | `/auth/announcements/{announcementId}` | Returns an announcement in either status, for its managers. | ⬜ | Later | 2 | [announcements.md](endpoints/announcements.md#-get-authannouncementsannouncementid) |
+| 🔴 | POST | `/clubs/{clubId}/announcements` | Creates an announcement, optionally shared with other clubs. | ⬜ | Later | 4 | [announcements.md](endpoints/announcements.md#-post-clubsclubidannouncements) |
+| 🔴 | PATCH | `/auth/announcements/{announcementId}` | Edits an announcement, or posts a draft (`draft → posted` only). | ⬜ | Later | 7 | [announcements.md](endpoints/announcements.md#-patch-authannouncementsannouncementid) |
+| 🔴 | DELETE | `/auth/announcements/{announcementId}` | Deletes an announcement (soft delete). | ⬜ | Later | 2 | [announcements.md](endpoints/announcements.md#-delete-authannouncementsannouncementid) |
+| 🔴 | POST | `/auth/announcements/{announcementId}/restore` | Restores an announcement deleted less than 30 days ago. | ⬜ | Later | 5 | [announcements.md](endpoints/announcements.md#-post-authannouncementsannouncementidrestore) |
+| **Images** | | | | | | | |
+| 🟢 | POST | `/clubs/{clubId}/thumbnails` | Presigned S3 upload URL for a club logo. | ✅ | Now | 2 | [images.md](endpoints/images.md#-post-clubsclubidthumbnails) |
+| 🔴 | POST | `/clubs/{clubId}/thumbnails/confirm` | Attaches an uploaded logo to its club. | ⬜ | Now | 5 | [images.md](endpoints/images.md#-post-clubsclubidthumbnailsconfirm) |
+| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails` | Presigned S3 upload URL for an event thumbnail. | ✅ | Now | 2 | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnails) |
+| 🔴 | POST | `/clubs/{clubId}/events/{eventId}/thumbnails/confirm` | Attaches an uploaded thumbnail to its event. | ⬜ | Now | 5 | [images.md](endpoints/images.md#-post-clubsclubideventseventidthumbnailsconfirm) |
+| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/images` | Presigned S3 upload URL for an event gallery image. | ✅ | Later | 2 | [images.md](endpoints/images.md#-post-clubsclubideventseventidimages) |
+| 🟢 | POST | `/clubs/{clubId}/events/{eventId}/images/confirm` | Records an uploaded gallery image. Fails on warm invocations. | 🟨 | Later | 4 | [images.md](endpoints/images.md#-post-clubsclubideventseventidimagesconfirm) |
+| 🟢 | GET | `/clubs/{clubId}/events/{eventId}/images` | Lists gallery images with signed URLs. Broken: missing SQL file. | 🟨 | Later | 2 | [images.md](endpoints/images.md#-get-clubsclubideventseventidimages) |
+| 🔴 | DELETE | `/images/{imageId}` | Deletes an image. | ⬜ | Later | 7 | [images.md](endpoints/images.md#-delete-imagesimageid) |
+| **Admins** | | | | | | | |
+| 🔴 | GET | `/admins` | Lists admins. | ⬜ | Later | 2 | [admins.md](endpoints/admins.md#-get-admins) |
+| 🔴 | GET | `/admins/{studentId}` | Returns one admin. | ⬜ | Later | 2 | [admins.md](endpoints/admins.md#-get-adminsstudentid) |
+| 🔴 | POST | `/admins` | Promotes a student to admin. | ⬜ | Later | 3 | [admins.md](endpoints/admins.md#-post-admins) |
+| 🔴 | DELETE | `/admins/{studentId}` | Demotes an admin; never the last one. | ⬜ | Later | 3 | [admins.md](endpoints/admins.md#-delete-adminsstudentid) |
+| 🔴 | POST | `/admins/purge` | Permanently removes events, announcements, and images deleted more than 30 days ago (admins only). Proposed; not in the PDF. | ⬜ | Later | 6 | [admins.md](endpoints/admins.md#-post-adminspurge) |
+| **Verification** | | | | | | | |
+| 🔴 | POST | `/clubs/{clubId}/verification` | Marks a club verified. | ⬜ | Later | 3 | [verification.md](endpoints/verification.md#-post-clubsclubidverification) |
+| 🔴 | DELETE | `/clubs/{clubId}/verification` | Removes a club's verification. | ⬜ | Later | 3 | [verification.md](endpoints/verification.md#-delete-clubsclubidverification) |
+| **Internal** | | | | | | | |
+| 🔵 | trigger | Cognito sign-up and sign-in | Upserts the student row from `sub` and `email`. | ✅ | — | 1 | [internal.md](endpoints/internal.md#-cognito-student-sync-trigger) |
+| 🔵 | function | `RequireStudent` | Creates the caller's student row on first request if it's missing. | ✅ | — | 3 | [internal.md](endpoints/internal.md#-requirestudent-request-time-student-sync) |
+| 🔵 | function | Club role check | Is the caller e-board or owner of a club? No handler calls it yet. | 🟨 | Now | 1 | [internal.md](endpoints/internal.md#-club-role-check) |
+| 🔵 | function | Event role check | Is the caller e-board or owner of a club linked to an event? No handler calls it yet. | 🟨 | Now | 1 | [internal.md](endpoints/internal.md#-event-role-check) |
+| 🔵 | function | Admin check | Is the caller an admin? | ⬜ | Later | 1 | [internal.md](endpoints/internal.md#-admin-check) |
+| 🔵 | function | Image metadata write | Stores image metadata after an upload. | ⬜ | Now | 1 | [internal.md](endpoints/internal.md#-image-metadata-write-pdf-post-images) |
+| **Operational** | | | | | | | |
+| 🟢 | GET | `/health` | Liveness check; returns a fixed greeting. | ✅ | — | 0 | [operational.md](endpoints/operational.md#-get-health) |
+| 🟢 | GET | `/database/test` | Database connectivity check. Dormant: neither API registers it. | 🟨 | — | 0 | [operational.md](endpoints/operational.md#-get-databasetest) |
 
 
 **Totals:** 51 HTTP endpoints and 6 internal functions. `gateway/routes` registers 19 of the endpoints: 18 are deployed on both the dev and prod APIs (12 🟢 and 6 🔴; 14 ✅ and 4 🟨), and `GET /database/test` is dormant. The other 32 endpoints are planned: 21 from the PDF, 1 proposed from the frontend, 2 from the [decisions](#decisions) (restore and purge), and 8 for [announcements](endpoints/announcements.md), for the club page's Announcements tab. By frontend need: 22 endpoints and functions are **Now**, 30 are **Later**, and 5 are **—**.
@@ -257,6 +259,6 @@ Product and design decisions the repos don't settle. Endpoint sections repeat th
 - [coverage.md](coverage.md): every frontend screen mapped to the endpoints behind it, the frontend/backend contract mismatches and which side should change, and what the API doesn't cover yet.
 - [LAYOUT.md](LAYOUT.md): the `api/` module's directory layout, the module path for each endpoint, and the order its pieces depend on each other.
 - [pdf-coverage.md](pdf-coverage.md): the planning PDF's endpoints compared with the code, item by item.
-- [database/README.md](../database/README.md): the database module, baseline schema, and the 31 query groups the endpoints link to.
+- [database/README.md](../database/README.md): the database module, baseline schema, and the 32 query groups the endpoints link to. The schema's diagram source is [`database/docs/schema.dbml`](../database/docs/schema.dbml).
 - [Implementation reference](../infrastructure/legacy/docs/api/README.md) and [architecture docs](../infrastructure/legacy/docs/architecture/): the deployed stacks, authentication, and image uploads in more depth.
 - The frontend's [`docs/api.md`](https://github.com/GWC-Hunter-College/Hunter-College-Clubs-Frontend/blob/staging/docs/api.md): what the frontend expects from each endpoint. It differs from the backend in places; [coverage.md](coverage.md#contract-mismatches) lists every difference.

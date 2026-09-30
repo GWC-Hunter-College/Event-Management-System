@@ -60,6 +60,8 @@ Returns the caller's student record. No frontend page calls it; the frontend rea
 
 `email` may be `null`. `isAdmin` (new) is `true` when the caller has an `admins` row, so an admin page can decide whether to show itself without calling an admin-only route and handling `403`.
 
+**Queries** (2): 1. [`me/get/SELECT_student_by_sub.sql`](../../database/queries/me/get/SELECT_student_by_sub.sql) (read, `404` when there is no row) → 2. [`authorization/admins/is_admin/IS_admin.sql`](../../database/queries/authorization/admins/is_admin/IS_admin.sql) (read, the proposed `isAdmin`)
+
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/get.go`](../../infrastructure/legacy/lambda/api/me/get.go) · SQL [`students/SELECT_student_by_sub.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_by_sub.sql) · query groups [1](../../database/README.md#1-student-existence-and-upsert) and [2](../../database/README.md#2-current-student)
 
 ## 🔴 GET `/me/clubs`
@@ -99,6 +101,8 @@ Lists every club the caller has joined, with the caller's role in each. The fron
 
 **Proposed changes** (Need: **Now**; screens: My Clubs cards, and every page that derives the viewer's role): `thumbnailUrl` becomes a readable URL ([proposed club object](clubs.md#proposed-club-object)). `role` and the envelope are unchanged; in the baseline schema `role` is read straight from `club_members.role` ([decision 11](../README.md#decisions)). Clubs are ordered by name.
 
+**Queries** (1): 1. [`me/clubs/list/SELECT_student_clubs.sql`](../../database/queries/me/clubs/list/SELECT_student_clubs.sql) (read)
+
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/clubs/get.go`](../../infrastructure/legacy/lambda/api/me/clubs/get.go) · SQL [`students/SELECT_student_clubs.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_clubs.sql) · [query group 3](../../database/README.md#3-current-students-clubs-and-roles)
 
 ## 🔴 GET `/me/events`
@@ -131,6 +135,8 @@ Lists posted events linked to any club the caller has joined. The frontend's My 
 
 **PDF path:** the planning PDF writes this route as `GET /me/clubs/events?startDate=&endDate=`. A stub for that path exists only in the commented-out [`StubLambdaStack`](../../infrastructure/legacy/internal/stack/stubLambda.go), with a hard-coded handler ([`stub/lambda/me/clubs/events/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/events/get.go)) and stale SQL ([`GET_me_clubs_events.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/events/GET_me_clubs_events.sql)). This route is the one implementation; add an alias for the PDF path only if a client needs it.
 
+**Queries** (1): 1. [`me/events/list/SELECT_student_events.sql`](../../database/queries/me/events/list/SELECT_student_events.sql) (read)
+
 **Code:** route [`student_routes.go`](../../infrastructure/legacy/gateway/routes/student_routes.go) · handler [`me/events/get.go`](../../infrastructure/legacy/lambda/api/me/events/get.go) · SQL [`students/SELECT_student_events.sql`](../../infrastructure/legacy/utils/query_client/queries/students/SELECT_student_events.sql) · [query group 4](../../database/README.md#4-current-students-events)
 
 ## 🔴 GET `/me/clubs/eboard`
@@ -146,5 +152,7 @@ Lists the clubs where the caller is e-board or owner (PDF). Until it exists, the
 **Need:** none. The frontend filters `GET /me/clubs` by `role` itself.
 
 **Status:** ⬜ Not built. Only an inactive, hard-coded stub ([`stub/lambda/me/clubs/eboard/get.go`](../../infrastructure/legacy/stub/lambda/me/clubs/eboard/get.go)) and stale SQL ([`eboard.sql`](../../infrastructure/legacy/stub/lambda/me/clubs/eboard/eboard.sql)) exist. That SQL has an `AND`/`OR` precedence bug and selects student IDs instead of clubs, so treat it as design notes, not working SQL.
+
+**Queries** (1): 1. [`me/clubs/list/SELECT_student_clubs.sql`](../../database/queries/me/clubs/list/SELECT_student_clubs.sql) (read, the API keeps `role` `eboard` and `owner`). There's no SQL of its own ([query group 17](../../database/README.md#17-my-e-board-clubs)).
 
 **Plan:** PDF "Endpoints Revamp", p. 15 · [query group 17](../../database/README.md#17-my-e-board-clubs)

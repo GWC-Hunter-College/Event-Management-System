@@ -8,10 +8,12 @@ This file rates each item by how much working code exists for it. That's a diffe
 
 - ✅ **Built:** a working route, handler, and supporting behavior exist.
 - 🟨 **Partial:** only a stub or supporting primitive exists, the route is inactive, the item is built at a different path, or a defect blocks the intended behavior.
-- ⬜ **Not started:** no route, handler, or query exists.
+- ⬜ **Not started:** no route or handler exists, and the legacy code has no query for it.
 - ❓ **Needs a decision:** the evidence conflicts, or a product decision has to come first.
 
 Access markers follow [README.md](README.md#legend). For a route that isn't built, the marker is the design's intent, not a claim that it's deployed.
+
+The ratings describe the deployed code in [`infrastructure/legacy/`](../infrastructure/legacy/). The [database module](../database/README.md) now has SQL for every item except `GET /me/clubs/eboard`, which reuses the `GET /me/clubs` query. That SQL doesn't change a rating, because no route or handler runs it yet; each endpoint's **Queries** line in [endpoints/](endpoints/) links it.
 
 ## Sources
 
@@ -91,31 +93,31 @@ Every item in the PDF's "Endpoints Revamp", rated on the [readiness legend](#rea
 | `POST /clubs` | ✅ | Built at this path (protected). |
 | `POST /clubs/thumbnails` | 🟨 | Built as public `POST /clubs/{clubId}/thumbnails` with a JSON body. |
 | `GET /clubs/{clubId}` | ✅ | Built at this path (public). |
-| `GET /clubs/{clubId}/members` | ⬜ | Placeholder text only; no route, handler, or query. |
-| `GET /clubs/{clubId}/eboard` | ⬜ | No route, handler, or list query. |
+| `GET /clubs/{clubId}/members` | ⬜ | Placeholder text only; no route or handler. The module has the SQL. |
+| `GET /clubs/{clubId}/eboard` | ⬜ | No route or handler. The module's member-list SQL serves it. |
 | `POST /clubs/{clubId}/members` | 🟨 | Built as caller-only `POST .../members/me`. |
-| `PUT /clubs/{clubId}/members/roles` | ⬜ | No route, handler, owner-only check, or update query. |
+| `PUT /clubs/{clubId}/members/roles` | ⬜ | No route or handler. The module has the owner-only check and the update SQL. |
 | `DELETE /clubs/{clubId}/members/me` | 🟨 | The handler and query exist, but the route omits the JWT authorizer. |
 | `GET /clubs/{clubId}/events` | ✅ | Built at this path (public). |
-| `GET /clubs/{clubId}/events/drafts` | ⬜ | No route or handler; only reusable status-filtered SQL. |
+| `GET /clubs/{clubId}/events/drafts` | ⬜ | No route or handler; only reusable status-filtered SQL. The module has a drafts query that fixes the status. |
 | `POST /clubs/{clubId}/events` | 🟨 | The route exists, but its SQL is invalid and the club-role check is missing. |
 | `GET /events` | ✅ | Built at this path (public, posted events). |
 | `GET /events/{eventId}` | ✅ | Built at this path (public, posted events). |
-| `GET /events/{eventId}/images` | 🟨 | This path is an inactive stub; the club-scoped read that does exist lacks its SQL. |
+| `GET /events/{eventId}/images` | 🟨 | This path is an inactive stub; the club-scoped read that does exist lacks its SQL. The module has the SQL. |
 | `GET /events/{eventId}/description` | 🟨 | No dedicated route; the event detail includes the description. |
 | `GET /events/{eventId}/clubs` | 🟨 | No dedicated route; the event detail includes the owner and associate IDs. |
 | `GET /auth/events/{eventId}` | 🟨 | A public read and an unused authorization helper exist separately; no protected route combines them. |
-| `GET /auth/events/{eventId}/images` | 🟨 | A public club-scoped handler exists but lacks its SQL and authorization. |
-| `PATCH /auth/events/{eventId}` | ⬜ | No update handler or query. |
+| `GET /auth/events/{eventId}/images` | 🟨 | A public club-scoped handler exists but lacks its SQL and authorization. The module has both queries. |
+| `PATCH /auth/events/{eventId}` | ⬜ | No update handler. The module has the SQL. |
 | `POST /auth/events/{eventId}/thumbnails` | 🟨 | A public club-scoped S3 signer exists; authorization and confirmation don't. |
 | `POST /auth/events/{eventId}/images` | 🟨 | A public club-scoped S3 signer and confirmation exist; authorization doesn't. |
-| `DELETE /auth/events/{eventId}` | ⬜ | No archive or delete handler or query. |
-| `GET /admins` | ⬜ | Planning text and schema only. |
-| `GET /admins/{studentId}` | 🟨 | An unwired SQL stub that hard-codes an obsolete numeric student ID. |
-| `POST /admins` | ⬜ | No route, handler, insert query, or admin check. |
-| `DELETE /admins/{studentId}` | 🟨 | An unwired SQL stub that hard-codes an obsolete numeric student ID. |
+| `DELETE /auth/events/{eventId}` | ⬜ | No archive or delete handler. The module has the soft-delete SQL. |
+| `GET /admins` | ⬜ | Planning text and schema only. The module has the SQL. |
+| `GET /admins/{studentId}` | 🟨 | An unwired SQL stub that hard-codes an obsolete numeric student ID. The module has working SQL. |
+| `POST /admins` | ⬜ | No route or handler. The module has the insert and the admin check. |
+| `DELETE /admins/{studentId}` | 🟨 | An unwired SQL stub that hard-codes an obsolete numeric student ID. The module has working SQL. |
 | `GET /clubs?verified=true` | ✅ | Built as the `verified` query parameter on `GET /clubs`. |
-| `POST /clubs/{clubId}/verification` | ⬜ | Schema and read support only; no write. |
-| `DELETE /clubs/{clubId}/verification` | ⬜ | Schema and read support only; no write. |
+| `POST /clubs/{clubId}/verification` | ⬜ | Schema and read support only; no write. The module has the SQL. |
+| `DELETE /clubs/{clubId}/verification` | ⬜ | Schema and read support only; no write. The module has the SQL. |
 | Internal `POST /images` | 🟨 | No generic function; the metadata insert exists inside event-image confirmation. |
-| `DELETE /images/{imageId}` | ⬜ | No database or storage deletion workflow. |
+| `DELETE /images/{imageId}` | ⬜ | No handler or storage deletion. The module has the takedown SQL. |
